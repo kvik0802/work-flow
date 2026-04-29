@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Particle Orb — Deep Space</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{overflow:hidden;background:#000;font-family:'Inter',sans-serif;color:#fff}
+  canvas#scene{position:fixed;top:0;left:0;width:100%;height:100%;z-index:1}
+  #ui{position:fixed;bottom:36px;left:50%;transform:translateX(-50%);z-index:10;display:flex;flex-direction:column;align-items:center;gap:10px}
+  #morph-form{display:flex;gap:8px;background:rgba(255,255,255,0.06);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:8px 12px;box-shadow:0 8px 32px rgba(0,0,0,0.6)}
+  #text-input{background:transparent;border:none;outline:none;color:#fff;font-size:15px;width:240px;padding:6px 10px;letter-spacing:.5px}
+  #text-input::placeholder{color:rgba(255,255,255,0.25)}
+  #morph-btn{background:linear-gradient(135deg,rgba(100,60,200,.7),rgba(180,50,140,.7));border:1px solid rgba(255,255,255,0.15);color:#fff;font-weight:600;font-size:13px;padding:7px 18px;border-radius:10px;cursor:pointer;letter-spacing:1px;text-transform:uppercase;transition:all .3s}
+  #morph-btn:hover{filter:brightness(1.3);transform:scale(1.04)}
+  #status{font-size:12px;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.35)}
+  #status.morphing{color:rgba(160,100,255,.9)}
+  .hints{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:10;display:flex;gap:7px;flex-wrap:wrap;justify-content:center}
+  .hint{background:rgba(255,255,255,0.05);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:5px 13px;font-size:11px;color:rgba(255,255,255,0.4);cursor:pointer;transition:all .3s;user-select:none}
+  .hint:hover{background:rgba(120,60,220,.25);border-color:rgba(140,80,255,.4);color:#fff}
+  .hint span{margin-right:3px}
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div class="hints">
+  <div class="hint" onclick="morphWord('love')"><span>❤️</span>love</div>
+  <div class="hint" onclick="morphWord('cube')"><span>🧊</span>cube</div>
+  <div class="hint" onclick="morphWord('star')"><span>⭐</span>star</div>
+  <div class="hint" onclick="morphWord('circle')"><span>🔵</span>circle</div>
+  <div class="hint" onclick="morphWord('flower')"><span>🌸</span>flower</div>
+</div>
+<div id="ui">
+  <form id="morph-form" onsubmit="return handleSubmit(event)">
+    <input type="text" id="text-input" placeholder="Type any word… love, star, hello" autocomplete="off" spellcheck="false"/>
+    <button type="submit" id="morph-btn">Morph</button>
+  </form>
+  <div id="status">Status: Idle</div>
+</div>
+
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/","lil-gui":"https://cdn.jsdelivr.net/npm/lil-gui@0.19.2/dist/lil-gui.esm.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import GUI from 'lil-gui';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { AfterimagePass } from 'three/addons/postprocessing/AfterimagePass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+const N = 80000, DURATION = 2.8;
+const canvas = document.getElementById('scene');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:false});
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.6;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000005);
+
+// ── STARFIELD — natural with size/brightness variation ──
+(()=>{
+  const STARS=8000;
+  const sPos=new Float32Array(STARS*3), sSz=new Float32Array(STARS), sAlpha=new Float32Array(STARS);
+  for(let i=0;i<STARS;i++){
+    const th=Math.random()*Math.PI*2, ph=Math.acos(2*Math.random()-1), r=80+Math.random()*400;
+    sPos[i*3]=r*Math.sin(ph)*Math.cos(th); sPos[i*3+1]=r*Math.sin(ph)*Math.sin(th); sPos[i*3+2]=r*Math.cos(ph);
+    sSz[i]=Math.pow(Math.random(),3)*1.8+0.1; // mostly tiny, few bright
+    sAlpha[i]=0.3+Math.random()*0.7;
+  }
+  const sg=new THREE.BufferGeometry();
+  sg.setAttribute('position',new THREE.BufferAttribute(sPos,3));
+  sg.setAttribute('size',new THREE.BufferAttribute(sSz,1));
+  sg.setAttribute('alpha',new THREE.BufferAttribute(sAlpha,1));
+  const sm=new THREE.ShaderMaterial({
+    uniforms:{uTime:{value:0}},
+    vertexShader:`attribute float size;attribute float alpha;varying float vAlpha;uniform float uTime;void main(){vAlpha=alpha;vec4 mv=modelViewMatrix*vec4(position,1.);gl_Position=projectionMatrix*mv;gl_PointSize=size*(300./-mv.z);}`,
+    fragmentShader:`varying float vAlpha;void main(){vec2 uv=gl_PointCoord-.5;float d=length(uv);if(d>.5)discard;float b=smoothstep(.5,.0,d);gl_FragColor=vec4(vec3(1.),vAlpha*b);}`,
+    transparent:true,depthWrite:false,blending:THREE.AdditiveBlending
+  });
+  const starMesh=scene.add(new THREE.Points(sg,sm));
+  // twinkle in tick
+  window._starMat=sm;
+})();
+
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 1000);
+camera.position.set(0,0,16);
+
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.3;
+controls.minDistance = 4; controls.maxDistance = 60;
+controls.addEventListener('start',()=>{controls.autoRotate=false;clearTimeout(window._art)});
+controls.addEventListener('end',()=>{window._art=setTimeout(()=>controls.autoRotate=true,4000)});
+
+// ── POST PROCESSING ────────────────────────────────
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight), 0.45, 0.9, 0.4);
+composer.addPass(bloom);
+const afterimg = new AfterimagePass();
+afterimg.uniforms.damp.value = 0.92;
+composer.addPass(afterimg);
+composer.addPass(new OutputPass());
+
+// ── MOUSE ──────────────────────────────────────────
+const mouse2D = new THREE.Vector2();
+const mouse3D = new THREE.Vector3();
+const raycaster = new THREE.Raycaster();
+const iPlane = new THREE.Plane(new THREE.Vector3(0,0,1),0);
+window.addEventListener('mousemove',e=>{
+  mouse2D.x=(e.clientX/innerWidth)*2-1;
+  mouse2D.y=-(e.clientY/innerHeight)*2+1;
+});
+
+// ── SHADERS ────────────────────────────────────────
+const vert = `
+uniform float uTime;
+uniform float uProgress;
+uniform vec3 uMouse3D;
+uniform float uInteraction;
+uniform float uParticleSize;
+attribute vec3 aStart;
+attribute vec3 aEnd;
+attribute float aDelay;
+attribute float aSeed;
+varying vec3 vColor;
+varying float vAlpha;
+varying float vDepth;
+
+float eio(float t){return t<.5?4.*t*t*t:1.-pow(-2.*t+2.,3.)*.5;}
+
+// smooth noise helpers
+float h(float n){return fract(sin(n)*43758.5453);}
+float h3(vec3 p){return fract(sin(dot(p,vec3(127.1,311.7,74.7)))*43758.5453);}
+float sn(vec3 p){
+  vec3 i=floor(p),f=fract(p);
+  vec3 u=f*f*(3.-2.*f);
+  return mix(mix(mix(h3(i),h3(i+vec3(1,0,0)),u.x),mix(h3(i+vec3(0,1,0)),h3(i+vec3(1,1,0)),u.x),u.y),
+             mix(mix(h3(i+vec3(0,0,1)),h3(i+vec3(1,0,1)),u.x),mix(h3(i+vec3(0,1,1)),h3(i+vec3(1,1,1)),u.x),u.y),u.z);
+}
+
+void main(){
+  float stg=aDelay*.3;
+  float p=eio(clamp((uProgress-stg)/(1.-stg),0.,1.));
+  vec3 pos=mix(aStart,aEnd,p);
+
+  // organic arc with noise turbulence
+  float arc=sin(p*3.14159);
+  vec3 noisePos=pos*.4+vec3(uTime*.12);
+  float nx=(sn(noisePos)-.5)*2.;
+  float ny=(sn(noisePos+vec3(5.2,1.3,2.8))-.5)*2.;
+  float nz=(sn(noisePos+vec3(9.7,3.1,6.4))-.5)*2.;
+  pos+=vec3(nx,ny,nz)*arc*0.9;
+
+  // multi-layered natural breathing — no two particles move the same
+  float idleAmt=1.-smoothstep(0.,.3,uProgress)+smoothstep(.8,1.,uProgress);
+  float t1=uTime*.55, t2=uTime*.31, t3=uTime*.19;
+  pos.y+=(sin(t1+aSeed*2.39)*0.18+sin(t2+aSeed*5.1)*0.06)*idleAmt;
+  pos.x+=(cos(t2+aSeed*1.73)*0.10+cos(t3+aSeed*3.7)*0.04)*idleAmt;
+  pos.z+=(sin(t3+aSeed*4.21)*0.07)*idleAmt;
+
+  // whole orb drifts slowly through space
+  float driftX=sin(uTime*.08)*1.2;
+  float driftY=cos(uTime*.05)*0.7+sin(uTime*.13)*0.5;
+  pos.x+=driftX; pos.y+=driftY;
+
+  // mouse physics
+  vec3 toM=uMouse3D-pos;
+  float dist=length(toM);
+  if(dist>.01&&dist<6.){
+    float f=uInteraction*(1.-dist/6.);
+    pos+=normalize(toM)*f*.2;
+  }
+
+  vec4 mv=modelViewMatrix*vec4(pos,1.);
+  gl_Position=projectionMatrix*mv;
+  gl_PointSize=clamp(uParticleSize*(220./-mv.z),0.4,7.);
+  vDepth=clamp(-mv.z/20.,0.,1.);
+
+  // Nebula palette: deep purple core → violet/magenta mid → blue-teal edge
+  // depth 0=close/bright, 1=far
+  float distFromCenter=length(aEnd)/6.;
+  float coreFactor=1.-clamp(distFromCenter,0.,1.);
+
+  // slow hue drift per particle
+  float baseHue=fract(aSeed*.6+uTime*.018);
+  // blend from deep purple (0.72) → blue (0.62) → magenta (0.82) naturally
+  float hue=fract(0.62+baseHue*.25);
+  float s=0.8-coreFactor*.2;
+  // lighter in core, darker at edges — like real nebula
+  float l=0.18+coreFactor*0.22+0.07*sin(uTime*.35+aSeed*1.8);
+
+  float c2=(1.-abs(2.*l-1.))*s;
+  float xc=c2*(1.-abs(mod(hue*6.,2.)-1.));
+  float m2=l-c2*.5;
+  vec3 rgb;
+  float h6=hue*6.;
+  if(h6<1.)rgb=vec3(c2,xc,0.);
+  else if(h6<2.)rgb=vec3(xc,c2,0.);
+  else if(h6<3.)rgb=vec3(0.,c2,xc);
+  else if(h6<4.)rgb=vec3(0.,xc,c2);
+  else if(h6<5.)rgb=vec3(xc,0.,c2);
+  else rgb=vec3(c2,0.,xc);
+  vColor=rgb+m2;
+  vAlpha=smoothstep(50.,4.,-mv.z)*.8;
+}
+`;
+
+const frag = `
+varying vec3 vColor;
+varying float vAlpha;
+varying float vDepth;
+void main(){
+  vec2 uv=gl_PointCoord-.5;
+  float d=length(uv);
+  if(d>.5)discard;
+  // natural soft glow — bright hot core, diffuse halo
+  float core=smoothstep(.5,.0,d);
+  float halo=exp(-d*4.5)*.35;
+  float bright=core*.6+halo;
+  // subtle inner shimmer
+  float shimmer=exp(-d*12.)*.25;
+  gl_FragColor=vec4(vColor*(bright+shimmer), vAlpha*bright);
+}`;
+
+// ── GEOMETRY GENERATORS ────────────────────────────
+function sphere(n,r){r=r||4.2;const p=new Float32Array(n*3),ph=Math.PI*(3-Math.sqrt(5));for(let i=0;i<n;i++){const y=1-(i/(n-1))*2,rr=Math.sqrt(1-y*y),t=ph*i;p[i*3]=Math.cos(t)*rr*r;p[i*3+1]=y*r;p[i*3+2]=Math.sin(t)*rr*r;}return p;}
+function heart(n){const p=new Float32Array(n*3),s=.26;for(let i=0;i<n;i++){const t=Math.random()*Math.PI*2,r=Math.random();const x=16*Math.pow(Math.sin(t),3),y=13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t);p[i*3]=x*s*r;p[i*3+1]=y*s*r+1;p[i*3+2]=(Math.random()-.5)*3*r;}return p;}
+function cube(n){const p=new Float32Array(n*3),S=1.75,ed=[[-1,-1,-1,1,-1,-1],[-1,-1,-1,-1,1,-1],[-1,-1,-1,-1,-1,1],[1,1,1,-1,1,1],[1,1,1,1,-1,1],[1,1,1,1,1,-1],[-1,1,-1,1,1,-1],[-1,1,-1,-1,1,1],[1,-1,-1,1,1,-1],[1,-1,-1,1,-1,1],[-1,-1,1,1,-1,1],[-1,-1,1,-1,1,1]];for(let i=0;i<n;i++){const e=ed[Math.floor(Math.random()*ed.length)],t=Math.random();p[i*3]=(e[0]+(e[3]-e[0])*t)*S+(Math.random()-.5)*.04;p[i*3+1]=(e[1]+(e[4]-e[1])*t)*S+(Math.random()-.5)*.04;p[i*3+2]=(e[2]+(e[5]-e[2])*t)*S+(Math.random()-.5)*.04;}return p;}
+function star(n){const p=new Float32Array(n*3),oR=4.5,iR=1.8,pts=5;for(let i=0;i<n;i++){const sp=Math.floor(Math.random()*pts),oa=(sp/pts)*Math.PI*2-Math.PI/2,ia1=((sp-.5)/pts)*Math.PI*2-Math.PI/2,ia2=((sp+.5)/pts)*Math.PI*2-Math.PI/2;const tx=Math.cos(oa)*oR,ty=Math.sin(oa)*oR,i1x=Math.cos(ia1)*iR,i1y=Math.sin(ia1)*iR,i2x=Math.cos(ia2)*iR,i2y=Math.sin(ia2)*iR;let u=Math.random(),v=Math.random();if(u+v>1){u=1-u;v=1-v;}const w=1-u-v;p[i*3]=tx*w+i1x*u+i2x*v;p[i*3+1]=ty*w+i1y*u+i2y*v;p[i*3+2]=(Math.random()-.5)*.8;}return p;}
+function flower(n){const p=new Float32Array(n*3),sc=4;for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,ps=Math.abs(Math.cos(6*a*.5)),r=sc*(.15+.85*ps)*Math.sqrt(Math.random()),h=Math.sin(ps*Math.PI)*1.4*Math.random();p[i*3]=Math.cos(a)*r;p[i*3+1]=h;p[i*3+2]=Math.sin(a)*r;}return p;}
+function cloud(n){const p=new Float32Array(n*3);for(let i=0;i<n;i++){const t=Math.random()*Math.PI*2,ph=Math.acos(2*Math.random()-1),r=Math.cbrt(Math.random())*10;p[i*3]=r*Math.sin(ph)*Math.cos(t);p[i*3+1]=r*Math.sin(ph)*Math.sin(t);p[i*3+2]=r*Math.cos(ph);}return p;}
+function textPts(word,n){const cv=document.createElement('canvas'),cx=cv.getContext('2d',{willReadFrequently:true});cv.width=cv.height=512;let fs=280;cx.font=`bold ${fs}px Inter,Arial,sans-serif`;while(cx.measureText(word.toUpperCase()).width>440&&fs>40){fs-=8;cx.font=`bold ${fs}px Inter,Arial,sans-serif`;}cx.fillStyle='#fff';cx.textAlign='center';cx.textBaseline='middle';cx.fillText(word.toUpperCase(),256,256);const d=cx.getImageData(0,0,512,512).data,px=[];for(let y=0;y<512;y++)for(let x=0;x<512;x++)if(d[(y*512+x)*4+3]>100)px.push(x,y);if(px.length<10)return sphere(n);const p=new Float32Array(n*3);for(let i=0;i<n;i++){const pi=Math.floor(Math.random()*(px.length/2))*2;p[i*3]=((px[pi]/512)-.5)*9;p[i*3+1]=-((px[pi+1]/512)-.5)*9;p[i*3+2]=(Math.random()-.5)*1.2;}return p;}
+
+const SYMS={love:heart,cube,star,circle:sphere,flower};
+function getTarget(w){const k=w.toLowerCase().trim();return SYMS[k]?SYMS[k](N):k.length?textPts(k,N):cloud(N);}
+
+// ── PARTICLE MESH ──────────────────────────────────
+const geo = new THREE.BufferGeometry();
+const sPos=cloud(N), ePos=sPos.slice();
+const delays=new Float32Array(N), seeds=new Float32Array(N);
+for(let i=0;i<N;i++){delays[i]=Math.random();seeds[i]=Math.random()*1000;}
+geo.setAttribute('aStart',new THREE.BufferAttribute(sPos,3));
+geo.setAttribute('aEnd',new THREE.BufferAttribute(ePos,3));
+geo.setAttribute('aDelay',new THREE.BufferAttribute(delays,1));
+geo.setAttribute('aSeed',new THREE.BufferAttribute(seeds,1));
+geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(N*3),3));
+
+const mat = new THREE.ShaderMaterial({
+  uniforms:{uTime:{value:0},uProgress:{value:1},uMouse3D:{value:new THREE.Vector3()},uInteraction:{value:-0.5},uParticleSize:{value:2.2}},
+  vertexShader:vert, fragmentShader:frag,
+  transparent:true, depthWrite:false, blending:THREE.AdditiveBlending
+});
+scene.add(new THREE.Points(geo,mat));
+
+// ── GUI CONTROL PANEL ──────────────────────────────
+const params = {
+  autoOptimize: true,
+  toggleFullscreen(){ document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen(); },
+  resetCamera(){ controls.reset(); controls.autoRotate=true; }
+};
+const gui = new GUI({title:'Controls'});
+gui.add(params,'toggleFullscreen').name('Toggle Fullscreen');
+const pf=gui.addFolder('Performance');
+pf.add(params,'autoOptimize').name('Auto-Optimize (LOD)');
+gui.add(mat.uniforms.uProgress,'value',0,1).name('Morph Progress').listen();
+const bf=gui.addFolder('Bloom');
+bf.add(bloom,'strength',0,2,.01);
+bf.add(bloom,'radius',0,1,.01);
+bf.add(bloom,'threshold',0,1,.01);
+const tf=gui.addFolder('Trails');
+tf.add(afterimg.uniforms.damp,'value',0.5,0.99,.001).name('Persistence');
+const phf=gui.addFolder('Physics');
+phf.add(mat.uniforms.uInteraction,'value',-2,2,.01).name('Interaction Strength');
+const vf=gui.addFolder('Visuals');
+vf.add(mat.uniforms.uParticleSize,'value',0.5,5,.1).name('Particle Size');
+vf.add(renderer,'toneMappingExposure',0,2,.01).name('Exposure');
+gui.add(params,'resetCamera').name('Reset Camera');
+
+// ── MORPH ENGINE ───────────────────────────────────
+let morphing=false,morphStart=0,morphLabel='';
+const statusEl=document.getElementById('status');
+function eio(t){return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;}
+
+function morphTo(word){
+  const target=getTarget(word);
+  const sa=geo.attributes.aStart, ea=geo.attributes.aEnd;
+  const cp=mat.uniforms.uProgress.value;
+  for(let i=0;i<N;i++){
+    const ix=i*3;
+    const stg=delays[i]*.3, rp=Math.max(0,Math.min(1,(cp-stg)/(1-stg))), p=eio(rp);
+    sa.array[ix]  =sa.array[ix]  +(ea.array[ix]  -sa.array[ix]  )*p;
+    sa.array[ix+1]=sa.array[ix+1]+(ea.array[ix+1]-sa.array[ix+1])*p;
+    sa.array[ix+2]=sa.array[ix+2]+(ea.array[ix+2]-sa.array[ix+2])*p;
+    ea.array[ix]=target[ix]; ea.array[ix+1]=target[ix+1]; ea.array[ix+2]=target[ix+2];
+  }
+  sa.needsUpdate=true; ea.needsUpdate=true;
+  mat.uniforms.uProgress.value=0;
+  morphing=true; morphStart=performance.now()/1000; morphLabel=word.toUpperCase();
+  statusEl.textContent=`Morphing: "${morphLabel}" — 0%`;
+  statusEl.className='morphing';
+}
+
+// ── ANIMATION ──────────────────────────────────────
+const clock=new THREE.Clock();
+let lowFps=0,optimized=false;
+
+function tick(){
+  requestAnimationFrame(tick);
+  const el=clock.getElapsedTime(), dt=clock.getDelta();
+  mat.uniforms.uTime.value=el;
+  if(window._starMat) window._starMat.uniforms.uTime.value=el;
+
+  raycaster.setFromCamera(mouse2D,camera);
+  raycaster.ray.intersectPlane(iPlane,mouse3D);
+  mat.uniforms.uMouse3D.value.copy(mouse3D);
+
+  if(params.autoOptimize&&!optimized){
+    if(dt>.033){lowFps++;if(lowFps>60){renderer.setPixelRatio(1);afterimg.enabled=false;optimized=true;}}
+    else lowFps=0;
+  }
+
+  if(morphing){
+    const t=Math.min((performance.now()/1000-morphStart)/DURATION,1);
+    mat.uniforms.uProgress.value=t;
+    statusEl.textContent=`Morphing: "${morphLabel}" — ${Math.round(eio(t)*100)}%`;
+    if(t>=1){morphing=false;statusEl.textContent='Status: Complete ✓';statusEl.className='';setTimeout(()=>{if(!morphing)statusEl.textContent='Status: Idle';},2000);}
+  }
+
+  controls.update();
+  composer.render();
+}
+tick();
+setTimeout(()=>morphTo('circle'),600);
+
+// ── UI ─────────────────────────────────────────────
+window.handleSubmit=function(e){e.preventDefault();const v=document.getElementById('text-input').value.trim();if(v){morphTo(v);document.getElementById('text-input').value='';}return false;};
+window.morphWord=function(w){morphTo(w);document.getElementById('text-input').value='';};
+window.addEventListener('resize',()=>{const w=innerWidth,h=innerHeight;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h);composer.setSize(w,h);});
+</script>
+</body>
+</html>
