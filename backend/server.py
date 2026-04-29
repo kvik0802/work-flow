@@ -7,7 +7,7 @@ app = Flask(__name__, static_folder='../frontend', static_url_path='')
 PROJECT_CONFIG = {
     "name": "Particle Orb — Deep Space",
     "version": "1.2.0",
-    "author": "VICKY",
+    "author": "Naini Vivekanand",
     "particle_count": 150000,
     "theme": "nebula",
     "settings": {

@@ -87,4 +87,4 @@ The Flask server provides the following endpoints:
 
 ---
 
-Built with ❤️ by **VICKY**
+Built by **Naini Vivekanand**

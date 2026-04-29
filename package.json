@@ -6,6 +6,6 @@
   "scripts": {
     "start": "start http://localhost:5001 && python backend/server.py"
   },
-  "author": "VICKY",
+  "author": "Naini Vivekanand",
   "license": "MIT"
 }

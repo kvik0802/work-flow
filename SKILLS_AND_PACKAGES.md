@@ -45,4 +45,4 @@ This document provides a comprehensive list of the technologies, libraries, and 
 - **Project Architecture**: Organizing a "monorepo" style structure with separated `/backend` and `/frontend` concerns.
 
 ---
-*Documented for VICKY's Portfolio*
+*Built by Naini Vivekanand*

@@ -32,4 +32,4 @@ Implemented a dynamic color engine that reacts to specific shapes:
 - **Static Serving Fix**: Updated Flask to correctly map the frontend directory as a static folder, ensuring `index.html` is served reliably.
 
 ---
-*Created with ❤️ for VICKY*
+*Built by Naini Vivekanand*
