@@ -2,7 +2,10 @@
 
 A high-performance, interactive particle morphing system powered by **WebGL (Three.js)** and **Flask**. This project features a 80,000-particle engine that can dynamically transition between complex 3D shapes and custom text, all while maintaining a smooth, cinematic aesthetic.
 
-![Particle Orb Showcase](https://raw.githubusercontent.com/vicky/particle-python/main/preview.gif) *(Note: Add a real preview image/gif here later)*
+![Particle Orb Showcase](https://raw.githubusercontent.com/kvik0802/work-flow/main/media/how-does-it-work.mp4)
+
+## 🎥 Watch the Demo
+[Click here to watch the "How it works" video](./media/how-does-it-work.mp4)
 
 ## ✨ Key Features
 
