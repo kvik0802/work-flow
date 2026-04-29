@@ -294,7 +294,7 @@ function eio(t){return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;}
 
 function morphTo(word){
   const k = word.toLowerCase().trim();
-  const targetColor = SHAPE_COLORS[k] || 0x00ccff; // Default to water blue if unknown
+  const targetColor = SHAPE_COLORS[k] || 0xffffff; // Default to white for custom words
   mat.uniforms.uTargetColor.value.set(targetColor);
 
   const target=getTarget(word);
