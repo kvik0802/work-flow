@@ -60,6 +60,8 @@ particle-python/
     ```bash
     npm start
     ```
+    *(This will automatically open your browser to the project URL)*
+    
     *Alternatively:* `python backend/server.py`
 
 4.  **Open in Browser**:

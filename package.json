@@ -4,7 +4,7 @@
   "description": "Particle Orb — Deep Space creative coding project",
   "main": "backend/server.py",
   "scripts": {
-    "start": "python backend/server.py"
+    "start": "start http://localhost:5000 && python backend/server.py"
   },
   "author": "VICKY",
   "license": "MIT"
