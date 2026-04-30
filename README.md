@@ -2,15 +2,15 @@
 
 A high-performance, interactive particle morphing system powered by **WebGL (Three.js)** and **Flask**. This project features a 150,000-particle engine that can dynamically transition between complex 3D shapes and custom text, all while maintaining a smooth, cinematic aesthetic.
 
-### 🌐 Live Demo
+###  Live Demo
 **Access the project through the website:** [https://work-flow-0ltc.onrender.com/](https://work-flow-0ltc.onrender.com/)
 
 ![Particle Orb Showcase](https://raw.githubusercontent.com/kvik0802/work-flow/main/media/how-does-it-work.mp4)
 
-## 🎥 Watch the Demo
+##  Watch the Demo
 [Click here to watch the "How it works" video](./media/how-does-it-work.mp4)
 
-## ✨ Key Features
+##  Key Features
 
 -   **High-Density Engine**: Renders 80,000 particles simultaneously using custom GLSL shaders.
 -   **Dynamic Morphing**: Seamlessly transition between predefined shapes (Heart, Cube, Star, Sphere, Flower) or any custom text typed by the user.
@@ -22,7 +22,7 @@ A high-performance, interactive particle morphing system powered by **WebGL (Thr
 -   **Live Tuning**: Integrated GUI (`lil-gui`) to modify bloom, particle size, physics, and exposure in real-time.
 -   **Flask Backend**: Serves the application and provides API endpoints for configuration and metadata.
 
-## 🚀 Tech Stack
+##  Tech Stack
 
 ### Frontend
 -   **[Three.js](https://threejs.org/)**: The core 3D engine for scene management and rendering.
@@ -34,7 +34,7 @@ A high-performance, interactive particle morphing system powered by **WebGL (Thr
 -   **[Python](https://www.python.org/)**: Core logic for the host server.
 -   **[Flask](https://flask.palletsprojects.com/)**: A lightweight WSGI web application framework to serve the frontend and handle REST API requests.
 
-## 📂 Project Structure
+##  Project Structure
 
 ```bash
 particle-python/
@@ -47,7 +47,7 @@ particle-python/
 └── API_WALKTHROUGH.md      # Detailed API documentation
 ```
 
-## 🛠️ Installation & Setup
+##  Installation & Setup
 
 1.  **Clone the repository**:
     ```bash
@@ -73,7 +73,7 @@ particle-python/
 4.  **Open in Browser**:
     Navigate to [http://localhost:5001](http://localhost:5001) to experience the Particle Orb.
 
-## 🕹️ Controls
+##  Controls
 
 -   **Morph**: Type any word in the input box and press "Morph" or "Enter".
 -   **Rotate**: Left-click and drag to rotate the orb.
@@ -81,7 +81,7 @@ particle-python/
 -   **Pan**: Right-click and drag to move the camera.
 -   **GUI**: Use the control panel on the top-right to tweak visuals.
 
-## 🌐 Deployment (Live Website)
+##  Deployment (Live Website)
 
 This project is configured for easy deployment on **Render**.
 1. Create a new **Web Service** on [Render](https://render.com).
