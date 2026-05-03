@@ -1,155 +1,485 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Particle Orb — Deep Space</title>
-<style>
-  *{margin:0;padding:0;box-sizing:border-box}
-  body{overflow:hidden;background:#000;font-family:'Inter',sans-serif;color:#fff}
-  canvas#scene{position:fixed;top:0;left:0;width:100%;height:100%;z-index:1}
-  #ui{position:fixed;bottom:36px;left:50%;transform:translateX(-50%);z-index:10;display:flex;flex-direction:column;align-items:center;gap:10px}
-  #morph-form{display:flex;gap:8px;background:rgba(255,255,255,0.06);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);border-radius:16px;padding:8px 12px;box-shadow:0 8px 32px rgba(0,0,0,0.6)}
-  #text-input{background:transparent;border:none;outline:none;color:#fff;font-size:15px;width:240px;padding:6px 10px;letter-spacing:.5px}
-  #text-input::placeholder{color:rgba(255,255,255,0.25)}
-  #morph-btn{background:linear-gradient(135deg,rgba(100,60,200,.7),rgba(180,50,140,.7));border:1px solid rgba(255,255,255,0.15);color:#fff;font-weight:600;font-size:13px;padding:7px 18px;border-radius:10px;cursor:pointer;letter-spacing:1px;text-transform:uppercase;transition:all .3s}
-  #morph-btn:hover{filter:brightness(1.3);transform:scale(1.04)}
-  #status{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,0.4);display:flex;align-items:center;gap:8px;transition:all 0.4s ease}
-  #status.morphing{color:rgba(180,120,255,1)}
-  .status-dot{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,0.4);box-shadow:0 0 10px rgba(255,255,255,0.2)}
-  #status.morphing .status-dot{background:rgba(180,120,255,1);box-shadow:0 0 12px rgba(180,120,255,0.6);animation:pulse 1.5s infinite ease-in-out}
-  @keyframes pulse{0%{transform:scale(1);opacity:1}50%{transform:scale(1.5);opacity:0.6}100%{transform:scale(1);opacity:1}}
-  .particle-count{font-weight:700;color:rgba(255,255,255,0.7);margin-left:4px}
-  .hints{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:10;display:flex;gap:7px;flex-wrap:wrap;justify-content:center}
-  .hint{background:rgba(255,255,255,0.05);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:5px 13px;font-size:11px;color:rgba(255,255,255,0.4);cursor:pointer;transition:all .4s cubic-bezier(0.175, 0.885, 0.32, 1.275);user-select:none;position:relative;overflow:hidden}
-  .hint:hover{background:rgba(140,80,255,0.2);border-color:rgba(160,100,255,0.5);color:#fff;transform:translateY(-2px);box-shadow:0 0 15px rgba(140,80,255,0.3), inset 0 0 10px rgba(140,80,255,0.2)}
-  .hint::after{content:'';position:absolute;top:50%;left:50%;width:120%;height:120%;background:radial-gradient(circle, rgba(255,255,255,0.2) 0%, transparent 70%);transform:translate(-50%,-50%) scale(0);transition:transform 0.5s ease-out;pointer-events:none}
-  .hint:active::after{transform:translate(-50%,-50%) scale(1);transition:0s}
-  .hint span{margin-right:3px;filter:drop-shadow(0 0 5px rgba(255,255,255,0.3))}
-</style>
-</head>
-<body>
-<canvas id="scene"></canvas>
-<div class="hints">
-  <div class="hint" onclick="morphWord('love')"><span>❤️</span>love</div>
-  <div class="hint" onclick="morphWord('cube')"><span>🧊</span>cube</div>
-  <div class="hint" onclick="morphWord('star')"><span>⭐</span>star</div>
-  <div class="hint" onclick="morphWord('circle')"><span>🔵</span>circle</div>
-  <div class="hint" onclick="morphWord('flower')"><span>🌸</span>flower</div>
-</div>
-<div id="ui">
-  <form id="morph-form" onsubmit="return handleSubmit(event)">
-    <input type="text" id="text-input" placeholder="Type any word… love, star, hello" autocomplete="off" spellcheck="false"/>
-    <button type="submit" id="morph-btn">Morph</button>
-  </form>
-  <div id="status">
-    <div class="status-dot"></div>
-    <span id="status-text">System Stable</span>
-    <span class="particle-count">150,000 Particles</span>
-  </div>
-</div>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Particle Orb — Deep Space</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap"
+    rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box
+    }
 
-<script type="importmap">
-{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/","lil-gui":"https://cdn.jsdelivr.net/npm/lil-gui@0.19.2/dist/lil-gui.esm.js"}}
-</script>
-<script type="module">
-import * as THREE from 'three';
-import GUI from 'lil-gui';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { AfterimagePass } from 'three/addons/postprocessing/AfterimagePass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+    :root {
+      --accent: #a78bfa;
+      --accent2: #f472b6;
+      --glass: rgba(10, 10, 20, 0.55);
+      --glass-border: rgba(255, 255, 255, 0.08);
+      --glass-hover: rgba(255, 255, 255, 0.12);
+    }
 
-const N = 150000, DURATION = 3.2;
-const canvas = document.getElementById('scene');
-const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:false});
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(Math.min(devicePixelRatio,2));
-renderer.toneMapping = THREE.ReinhardToneMapping;
-renderer.toneMappingExposure = 1.2;
+    body {
+      overflow: hidden;
+      background: #000;
+      font-family: 'Space Grotesk', sans-serif;
+      color: #fff
+    }
 
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x000005);
+    canvas#scene {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1
+    }
 
-// ── STARFIELD — natural with size/brightness variation ──
-(()=>{
-  const STARS=8000;
-  const sPos=new Float32Array(STARS*3), sSz=new Float32Array(STARS), sAlpha=new Float32Array(STARS);
-  for(let i=0;i<STARS;i++){
-    const th=Math.random()*Math.PI*2, ph=Math.acos(2*Math.random()-1), r=80+Math.random()*400;
-    sPos[i*3]=r*Math.sin(ph)*Math.cos(th); sPos[i*3+1]=r*Math.sin(ph)*Math.sin(th); sPos[i*3+2]=r*Math.cos(ph);
-    sSz[i]=Math.pow(Math.random(),3)*1.8+0.1; // mostly tiny, few bright
-    sAlpha[i]=0.3+Math.random()*0.7;
-  }
-  const sg=new THREE.BufferGeometry();
-  sg.setAttribute('position',new THREE.BufferAttribute(sPos,3));
-  sg.setAttribute('size',new THREE.BufferAttribute(sSz,1));
-  sg.setAttribute('alpha',new THREE.BufferAttribute(sAlpha,1));
-  const sm=new THREE.ShaderMaterial({
-    uniforms:{uTime:{value:0}},
-    vertexShader:`attribute float size;attribute float alpha;varying float vAlpha;uniform float uTime;void main(){vAlpha=alpha;vec4 mv=modelViewMatrix*vec4(position,1.);gl_Position=projectionMatrix*mv;gl_PointSize=size*(300./-mv.z);}`,
-    fragmentShader:`varying float vAlpha;void main(){vec2 uv=gl_PointCoord-.5;float d=length(uv);if(d>.5)discard;float b=smoothstep(.5,.0,d);gl_FragColor=vec4(vec3(1.),vAlpha*b);}`,
-    transparent:true,depthWrite:false,blending:THREE.AdditiveBlending
-  });
-  const starMesh=scene.add(new THREE.Points(sg,sm));
-  // twinkle in tick
-  window._starMat=sm;
-})();
+    /* ── TOP NAV ── */
+    #top-nav {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      background: var(--glass);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid var(--glass-border);
+      border-radius: 100px;
+      padding: 6px 8px;
+      box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    }
 
-const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 1000);
-camera.position.set(0,0,16);
+    .shape-btn {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      background: transparent;
+      border: none;
+      color: rgba(255, 255, 255, 0.5);
+      cursor: pointer;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: .3px;
+      padding: 6px 12px;
+      border-radius: 100px;
+      transition: all .3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      position: relative;
+      white-space: nowrap;
+    }
 
-const controls = new OrbitControls(camera, canvas);
-controls.enableDamping = true;
-controls.autoRotate = true;
-controls.autoRotateSpeed = 0.3;
-controls.minDistance = 4; controls.maxDistance = 60;
-controls.addEventListener('start',()=>{controls.autoRotate=false;clearTimeout(window._art)});
-controls.addEventListener('end',()=>{window._art=setTimeout(()=>controls.autoRotate=true,4000)});
+    .shape-btn .ico {
+      font-size: 14px;
+      line-height: 1;
+      filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.2))
+    }
 
-// ── POST PROCESSING ────────────────────────────────
-const composer = new EffectComposer(renderer);
-composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth,innerHeight), 0.45, 0.9, 0.4);
-composer.addPass(bloom);
-const afterimg = new AfterimagePass();
-afterimg.uniforms.damp.value = 0.92;
-composer.addPass(afterimg);
-composer.addPass(new OutputPass());
+    .shape-btn:hover {
+      color: #fff;
+      background: var(--glass-hover)
+    }
 
-// ── MOUSE ──────────────────────────────────────────
-const mouse2D = new THREE.Vector2();
-const mouse3D = new THREE.Vector3();
-const raycaster = new THREE.Raycaster();
-const iPlane = new THREE.Plane(); // Will be updated to face camera
-window.addEventListener('mousemove',e=>{
-  mouse2D.x=(e.clientX/innerWidth)*2-1;
-  mouse2D.y=-(e.clientY/innerHeight)*2+1;
-});
-window.addEventListener('mousedown',()=>{
-  if(window._bursting) return;
-  window._bursting = true;
-  import('https://cdn.jsdelivr.net/npm/gsap@3.12.5/index.js').then(gsap => {
-    gsap.default.to(mat.uniforms.uBurstStrength, {
-      value: 1,
-      duration: 0.15,
-      ease: 'power2.out',
-      onComplete: () => {
-        gsap.default.to(mat.uniforms.uBurstStrength, {
-          value: 0,
-          duration: 0.8,
-          ease: 'power2.inOut',
-          onComplete: () => window._bursting = false
-        });
+    .shape-btn.active {
+      color: #fff;
+      background: rgba(167, 139, 250, 0.25);
+      border: 1px solid rgba(167, 139, 250, 0.4);
+      box-shadow: 0 0 14px rgba(167, 139, 250, 0.3), inset 0 0 10px rgba(167, 139, 250, 0.1)
+    }
+
+    .nav-divider {
+      width: 1px;
+      height: 18px;
+      background: var(--glass-border);
+      flex-shrink: 0
+    }
+
+    /* ── BOTTOM BAR ── */
+    #bottom-bar {
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      width: min(540px, calc(100vw - 32px));
+    }
+
+    #morph-form {
+      display: flex;
+      gap: 0;
+      width: 100%;
+      background: var(--glass);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid var(--glass-border);
+      border-radius: 14px;
+      box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      overflow: hidden;
+    }
+
+    #text-input {
+      background: transparent;
+      border: none;
+      outline: none;
+      color: #fff;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 14px;
+      font-weight: 400;
+      flex: 1;
+      padding: 12px 16px;
+      letter-spacing: .3px;
+      min-width: 0;
+    }
+
+    #text-input::placeholder {
+      color: rgba(255, 255, 255, 0.2)
+    }
+
+    #morph-btn {
+      background: linear-gradient(135deg, rgba(167, 139, 250, 0.8), rgba(244, 114, 182, 0.8));
+      border: none;
+      border-left: 1px solid rgba(255, 255, 255, 0.08);
+      color: #fff;
+      font-family: 'Space Grotesk', sans-serif;
+      font-weight: 600;
+      font-size: 11px;
+      padding: 0 20px;
+      cursor: pointer;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      transition: all .2s;
+      flex-shrink: 0;
+    }
+
+    #morph-btn:hover {
+      filter: brightness(1.25);
+      background: linear-gradient(135deg, rgba(167, 139, 250, 1), rgba(244, 114, 182, 1))
+    }
+
+    #morph-btn:active {
+      transform: scale(0.97)
+    }
+
+    /* ── STATUS ── */
+    #status-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.3);
+      transition: color .4s;
+    }
+
+    #status-bar.morphing {
+      color: rgba(167, 139, 250, 0.9)
+    }
+
+    .s-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: currentColor;
+      flex-shrink: 0
+    }
+
+    #status-bar.morphing .s-dot {
+      animation: sdot 1.2s infinite ease-in-out
+    }
+
+    @keyframes sdot {
+
+      0%,
+      100% {
+        transform: scale(1);
+        opacity: 1
       }
-    });
-  });
-});
 
-// ── SHADERS ────────────────────────────────────────
-const vert = `
+      50% {
+        transform: scale(1.8);
+        opacity: .5
+      }
+    }
+
+    #status-bar.morphing .s-sep {
+      opacity: 0
+    }
+
+    .s-sep {
+      opacity: .3
+    }
+
+    .s-count {
+      color: rgba(255, 255, 255, 0.5);
+      font-weight: 700
+    }
+
+    /* ── PROGRESS BAR ── */
+    #progress-wrap {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      z-index: 20;
+      opacity: 0;
+      transition: opacity .3s;
+    }
+
+    #progress-wrap.active {
+      opacity: 1
+    }
+
+    #progress-bar {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      transition: width .1s linear;
+      box-shadow: 0 0 12px var(--accent);
+    }
+
+    /* ── TOP-RIGHT INFO ── */
+    #corner-info {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+    }
+
+    .ci-label {
+      font-family: 'Space Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.2)
+    }
+
+    .ci-val {
+      font-size: 11px;
+      font-weight: 500;
+      color: rgba(255, 255, 255, 0.4)
+    }
+
+    /* ── TOOLTIP ── */
+    #tooltip {
+      position: fixed;
+      bottom: 110px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.3);
+      letter-spacing: .5px;
+      pointer-events: none;
+      opacity: 1;
+      transition: opacity 1s;
+      font-family: 'Space Mono', monospace;
+    }
+
+    #tooltip.hidden {
+      opacity: 0
+    }
+
+    /* ── LIL-GUI OVERRIDES ── */
+    .lil-gui {
+      --background-color: rgba(8, 8, 18, 0.85) !important;
+      --text-color: rgba(255, 255, 255, 0.75) !important;
+      --title-background-color: rgba(167, 139, 250, 0.15) !important;
+      --title-text-color: #a78bfa !important;
+      --widget-color: rgba(255, 255, 255, 0.06) !important;
+      --hover-color: rgba(167, 139, 250, 0.2) !important;
+      --focus-color: rgba(167, 139, 250, 0.35) !important;
+      --number-color: #67e8f9 !important;
+      --string-color: #86efac !important;
+      --font-family: 'Space Mono', monospace !important;
+      --font-size: 11px !important;
+      --input-font-size: 11px !important;
+      --border-radius: 10px !important;
+      backdrop-filter: blur(20px) !important;
+      -webkit-backdrop-filter: blur(20px) !important;
+      border: 1px solid rgba(167, 139, 250, 0.15) !important;
+      box-shadow: 0 8px 40px rgba(0, 0, 0, 0.8) !important;
+    }
+
+    .lil-gui .title {
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      font-size: 10px !important
+    }
+
+    .lil-gui .controller.folder .title {
+      font-size: 10px !important;
+      letter-spacing: .8px
+    }
+  </style>
+</head>
+
+<body>
+  <canvas id="scene"></canvas>
+
+  <!-- Top progress bar -->
+  <div id="progress-wrap">
+    <div id="progress-bar"></div>
+  </div>
+
+  <!-- Shape nav -->
+  <nav id="top-nav">
+    <button class="shape-btn active" onclick="doMorph('love')" data-shape="love"><span
+        class="ico">❤️</span>Love</button>
+    <button class="shape-btn" onclick="doMorph('cube')" data-shape="cube"><span class="ico">🧊</span>Cube</button>
+    <button class="shape-btn" onclick="doMorph('star')" data-shape="star"><span class="ico">⭐</span>Star</button>
+    <button class="shape-btn" onclick="doMorph('circle')" data-shape="circle"><span class="ico">🔵</span>Sphere</button>
+    <button class="shape-btn" onclick="doMorph('flower')" data-shape="flower"><span class="ico">🌸</span>Flower</button>
+    <div class="nav-divider"></div>
+    <button class="shape-btn" onclick="doMorph('galaxy')" data-shape="galaxy"><span class="ico">🌌</span>Galaxy</button>
+    <button class="shape-btn" onclick="doMorph('tornado')" data-shape="tornado"><span
+        class="ico">🌪️</span>Tornado</button>
+    <button class="shape-btn" onclick="doMorph('ring')" data-shape="ring"><span class="ico">💫</span>Ring</button>
+  </nav>
+
+  <!-- Corner info -->
+  <div id="corner-info">
+    <span class="ci-label">Particles</span>
+    <span class="ci-val" id="ci-particles">150,000</span>
+    <span class="ci-label" style="margin-top:6px">FPS</span>
+    <span class="ci-val" id="ci-fps">—</span>
+  </div>
+
+  <!-- Bottom bar -->
+  <div id="bottom-bar">
+    <form id="morph-form" onsubmit="return handleSubmit(event)">
+      <input type="text" id="text-input" placeholder="Type anything — hello, wave, moon, peace…" autocomplete="off"
+        spellcheck="false" />
+      <button type="submit" id="morph-btn">Morph</button>
+    </form>
+    <div id="status-bar">
+      <div class="s-dot"></div>
+      <span id="status-text">System Stable</span>
+    </div>
+  </div>
+
+  <!-- Hint tooltip -->
+  <div id="tooltip">drag to rotate &nbsp;·&nbsp; scroll to zoom &nbsp;·&nbsp; click to burst</div>
+
+  <script type="importmap">
+{"imports":{
+  "three":"https://cdn.jsdelivr.net/npm/three@0.164.1/build/three.module.js",
+  "three/addons/":"https://cdn.jsdelivr.net/npm/three@0.164.1/examples/jsm/",
+  "lil-gui":"https://cdn.jsdelivr.net/npm/lil-gui@0.19.2/dist/lil-gui.esm.js"
+}}
+</script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import GUI from 'lil-gui';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+    import { AfterimagePass } from 'three/addons/postprocessing/AfterimagePass.js';
+    import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+    const N = 150000, DURATION = 3.2;
+    const canvas = document.getElementById('scene');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ReinhardToneMapping;
+    renderer.toneMappingExposure = 1.2;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x000005);
+
+    // ── STARFIELD ──
+    (() => {
+      const S = 8000, sp = new Float32Array(S * 3), ss = new Float32Array(S), sa = new Float32Array(S);
+      for (let i = 0; i < S; i++) {
+        const th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1), r = 80 + Math.random() * 400;
+        sp[i * 3] = r * Math.sin(ph) * Math.cos(th); sp[i * 3 + 1] = r * Math.sin(ph) * Math.sin(th); sp[i * 3 + 2] = r * Math.cos(ph);
+        ss[i] = Math.pow(Math.random(), 3) * 1.8 + 0.1; sa[i] = 0.3 + Math.random() * 0.7;
+      }
+      const sg = new THREE.BufferGeometry();
+      sg.setAttribute('position', new THREE.BufferAttribute(sp, 3));
+      sg.setAttribute('size', new THREE.BufferAttribute(ss, 1));
+      sg.setAttribute('alpha', new THREE.BufferAttribute(sa, 1));
+      const sm = new THREE.ShaderMaterial({
+        uniforms: { uTime: { value: 0 } },
+        vertexShader: `attribute float size;attribute float alpha;varying float vAlpha;void main(){vAlpha=alpha;vec4 mv=modelViewMatrix*vec4(position,1.);gl_Position=projectionMatrix*mv;gl_PointSize=size*(300./-mv.z);}`,
+        fragmentShader: `varying float vAlpha;void main(){vec2 uv=gl_PointCoord-.5;float d=length(uv);if(d>.5)discard;float b=smoothstep(.5,.0,d);gl_FragColor=vec4(1.,1.,1.,vAlpha*b);}`,
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+      });
+      scene.add(new THREE.Points(sg, sm));
+      window._starMat = sm;
+    })();
+
+    const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 1000);
+    camera.position.set(0, 0, 16);
+
+    const controls = new OrbitControls(camera, canvas);
+    controls.enableDamping = true; controls.autoRotate = true; controls.autoRotateSpeed = 0.3;
+    controls.minDistance = 4; controls.maxDistance = 60;
+    controls.addEventListener('start', () => { controls.autoRotate = false; clearTimeout(window._art) });
+    controls.addEventListener('end', () => { window._art = setTimeout(() => controls.autoRotate = true, 4000) });
+
+    // ── POST PROCESSING ──
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.5, 0.9, 0.35);
+    composer.addPass(bloom);
+    const afterimg = new AfterimagePass();
+    afterimg.uniforms.damp.value = 0.92;
+    composer.addPass(afterimg);
+    composer.addPass(new OutputPass());
+
+    // ── MOUSE ──
+    const mouse2D = new THREE.Vector2(), mouse3D = new THREE.Vector3();
+    const raycaster = new THREE.Raycaster(), iPlane = new THREE.Plane();
+    window.addEventListener('mousemove', e => {
+      mouse2D.x = (e.clientX / innerWidth) * 2 - 1;
+      mouse2D.y = -(e.clientY / innerHeight) * 2 + 1;
+    });
+    window.addEventListener('mousedown', () => {
+      if (window._bursting || document.activeElement === document.getElementById('text-input')) return;
+      window._bursting = true;
+      mat.uniforms.uBurstStrength.value = 1;
+      const fade = () => {
+        mat.uniforms.uBurstStrength.value *= 0.88;
+        if (mat.uniforms.uBurstStrength.value > 0.01) requestAnimationFrame(fade);
+        else { mat.uniforms.uBurstStrength.value = 0; window._bursting = false; }
+      };
+      setTimeout(fade, 120);
+    });
+
+    // Hide tooltip after 5s
+    setTimeout(() => document.getElementById('tooltip').classList.add('hidden'), 5000);
+
+    // ── SHAPE COLORS ──
+    const SHAPE_COLORS = {
+      love: 0xff2255, cube: 0x00d4ff, star: 0xffcc00, circle: 0x00d4ff,
+      flower: 0xff66bb, galaxy: 0xaa66ff, tornado: 0x44ddff,
+      ring: 0xff9944
+    };
+
+    // ── SHADERS ──
+    const vert = `
 uniform float uTime;
 uniform float uProgress;
 uniform vec3 uMouse3D;
@@ -161,22 +491,16 @@ attribute float aDelay;
 attribute float aSeed;
 varying vec3 vColor;
 varying float vAlpha;
-varying float vDepth;
 uniform vec3 uTargetColor;
 uniform float uBurstStrength;
 
 float spring(float t){
-  float s = 1.70158 * 1.5; // Increased overshoot
-  float t1 = t - 1.0;
-  return t1 * t1 * ((s + 1.0) * t1 + s) + 1.0;
+  float s=2.5553;float t1=t-1.;
+  return t1*t1*((s+1.)*t1+s)+1.;
 }
-
-// smooth noise helpers
-float h(float n){return fract(sin(n)*43758.5453);}
 float h3(vec3 p){return fract(sin(dot(p,vec3(127.1,311.7,74.7)))*43758.5453);}
 float sn(vec3 p){
-  vec3 i=floor(p),f=fract(p);
-  vec3 u=f*f*(3.-2.*f);
+  vec3 i=floor(p),f=fract(p),u=f*f*(3.-2.*f);
   return mix(mix(mix(h3(i),h3(i+vec3(1,0,0)),u.x),mix(h3(i+vec3(0,1,0)),h3(i+vec3(1,1,0)),u.x),u.y),
              mix(mix(h3(i+vec3(0,0,1)),h3(i+vec3(1,0,1)),u.x),mix(h3(i+vec3(0,1,1)),h3(i+vec3(1,1,1)),u.x),u.y),u.z);
 }
@@ -186,233 +510,303 @@ void main(){
   float p=spring(clamp((uProgress-stg)/(1.-stg),0.,1.));
   vec3 pos=mix(aStart,aEnd,p);
 
-  // organic arc with noise turbulence
   float arc=sin(p*3.14159);
-  vec3 noisePos=pos*.4+vec3(uTime*.12);
-  float nx=(sn(noisePos)-.5)*2.;
-  float ny=(sn(noisePos+vec3(5.2,1.3,2.8))-.5)*2.;
-  float nz=(sn(noisePos+vec3(9.7,3.1,6.4))-.5)*2.;
-  pos+=vec3(nx,ny,nz)*arc*0.9;
+  vec3 np=pos*.4+vec3(uTime*.12);
+  pos+=vec3((sn(np)-.5)*2.,(sn(np+vec3(5.2,1.3,2.8))-.5)*2.,(sn(np+vec3(9.7,3.1,6.4))-.5)*2.)*arc*0.9;
 
-  // multi-layered natural breathing — no two particles move the same
-  float idleAmt=1.-smoothstep(0.,.3,uProgress)+smoothstep(.8,1.,uProgress);
-  float t1=uTime*.55, t2=uTime*.31, t3=uTime*.19;
-  pos.y+=(sin(t1+aSeed*2.39)*0.18+sin(t2+aSeed*5.1)*0.06)*idleAmt;
-  pos.x+=(cos(t2+aSeed*1.73)*0.10+cos(t3+aSeed*3.7)*0.04)*idleAmt;
-  pos.z+=(sin(t3+aSeed*4.21)*0.07)*idleAmt;
+  float idle=1.-smoothstep(0.,.3,uProgress)+smoothstep(.8,1.,uProgress);
+  float t1=uTime*.55,t2=uTime*.31,t3=uTime*.19;
+  pos.y+=(sin(t1+aSeed*2.39)*.18+sin(t2+aSeed*5.1)*.06)*idle;
+  pos.x+=(cos(t2+aSeed*1.73)*.10+cos(t3+aSeed*3.7)*.04)*idle;
+  pos.z+=(sin(t3+aSeed*4.21)*.07)*idle;
 
-  // whole orb drifts slowly through space
-  float driftX=sin(uTime*.08)*1.2;
-  float driftY=cos(uTime*.05)*0.7+sin(uTime*.13)*0.5;
-  pos.x+=driftX; pos.y+=driftY;
+  pos.x+=sin(uTime*.08)*1.2;
+  pos.y+=cos(uTime*.05)*.7+sin(uTime*.13)*.5;
 
-  // mouse physics (dynamic repulsion + burst)
-  vec3 toM = pos - uMouse3D;
-  float dist = length(toM);
-  float radius = 5.0;
-  if(dist < radius){
-    float force = pow(1.0 - dist/radius, 2.0);
-    // Combined interaction and burst
-    float totalForce = force * (uInteraction * 4.0 + uBurstStrength * 15.0);
-    pos += normalize(toM) * totalForce;
+  vec3 toM=pos-uMouse3D;
+  float dist=length(toM);
+  if(dist<5.){
+    float force=pow(1.-dist/5.,2.);
+    pos+=normalize(toM)*force*(uInteraction*4.+uBurstStrength*15.);
   }
 
   vec4 mv=modelViewMatrix*vec4(pos,1.);
   gl_Position=projectionMatrix*mv;
-  
-  // Natural "Glossy" twinkle logic
-  float twinkle = sin(uTime * (1.5 + aSeed * 2.0) + aSeed * 10.0) * 0.3 + 0.7;
-  gl_PointSize=clamp(uParticleSize*(280./-mv.z),0.6,8.0) * twinkle;
-  vDepth=clamp(-mv.z/30.,0.,1.);
+  float twinkle=sin(uTime*(1.5+aSeed*2.)+aSeed*10.)*.3+.7;
+  gl_PointSize=clamp(uParticleSize*(280./-mv.z),.6,8.)*twinkle;
 
-  // Nebula palette: deep purple core → violet/magenta mid → blue-teal edge
-  // depth 0=close/bright, 1=far
-  float distFromCenter=length(aEnd)/6.;
-  float coreFactor=1.-clamp(distFromCenter,0.,1.);
-  // Transition to shape-specific color
-  vec3 shapeColor = uTargetColor;
-  
-  // Add a "glossy" highlight factor (mixing with pure white)
-  float glossy = pow(coreFactor, 2.5) * 0.7;
-  vColor = mix(shapeColor, vec3(1.0), glossy); 
-  
-  // Subtle twinkle/hue variation
-  vColor += (sin(aSeed * 10.0 + uTime) * 0.05);
-  
-  // Mouse hover glow
-  float mDist = distance(pos, uMouse3D);
-  if(mDist < 3.0) {
-    float glow = pow(1.0 - mDist/3.0, 3.0);
-    vColor = mix(vColor, vec3(1.0, 0.4, 0.8), glow * 0.5); // Add a magenta tint near mouse
-  }
-  
-  vColor *= 1.3;
-  
-  vAlpha=smoothstep(60.,2.,-mv.z) * (0.6 + coreFactor * 0.4);
-}
-`;
-
-const frag = `
-varying vec3 vColor;
-varying float vAlpha;
-varying float vDepth;
-void main(){
-  vec2 uv=gl_PointCoord-.5;
-  float d=length(uv);
-  if(d>.5)discard;
-  
-  // Glossy Core: Bright specular center with soft falloff
-  float core = smoothstep(0.5, 0.0, d);
-  float specular = exp(-d * 15.0) * 0.8;
-  float softHalo = exp(-d * 4.0) * 0.25;
-  
-  float intensity = (core * 0.4 + specular + softHalo);
-  gl_FragColor = vec4(vColor * intensity, vAlpha * intensity);
+  float distC=length(aEnd)/6.,core=1.-clamp(distC,0.,1.);
+  float glossy=pow(core,2.5)*.7;
+  vColor=mix(uTargetColor,vec3(1.),glossy);
+  vColor+=(sin(aSeed*10.+uTime)*.05);
+  float mDist=distance(pos,uMouse3D);
+  if(mDist<3.){float g=pow(1.-mDist/3.,3.);vColor=mix(vColor,vec3(1.,.4,.8),g*.5);}
+  vColor*=1.3;
+  vAlpha=smoothstep(60.,2.,-mv.z)*(.6+core*.4);
 }`;
 
-// ── GEOMETRY GENERATORS ────────────────────────────
-function sphere(n,r){r=r||4.2;const p=new Float32Array(n*3),ph=Math.PI*(3-Math.sqrt(5));for(let i=0;i<n;i++){const y=1-(i/(n-1))*2,rr=Math.sqrt(1-y*y),t=ph*i;p[i*3]=Math.cos(t)*rr*r;p[i*3+1]=y*r;p[i*3+2]=Math.sin(t)*rr*r;}return p;}
-function heart(n){const p=new Float32Array(n*3),s=.26;for(let i=0;i<n;i++){const t=Math.random()*Math.PI*2,r=Math.random();const x=16*Math.pow(Math.sin(t),3),y=13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t);p[i*3]=x*s*r;p[i*3+1]=y*s*r+1;p[i*3+2]=(Math.random()-.5)*3*r;}return p;}
-function cube(n){const p=new Float32Array(n*3),S=1.75,ed=[[-1,-1,-1,1,-1,-1],[-1,-1,-1,-1,1,-1],[-1,-1,-1,-1,-1,1],[1,1,1,-1,1,1],[1,1,1,1,-1,1],[1,1,1,1,1,-1],[-1,1,-1,1,1,-1],[-1,1,-1,-1,1,1],[1,-1,-1,1,1,-1],[1,-1,-1,1,-1,1],[-1,-1,1,1,-1,1],[-1,-1,1,-1,1,1]];for(let i=0;i<n;i++){const e=ed[Math.floor(Math.random()*ed.length)],t=Math.random();p[i*3]=(e[0]+(e[3]-e[0])*t)*S+(Math.random()-.5)*.04;p[i*3+1]=(e[1]+(e[4]-e[1])*t)*S+(Math.random()-.5)*.04;p[i*3+2]=(e[2]+(e[5]-e[2])*t)*S+(Math.random()-.5)*.04;}return p;}
-function star(n){const p=new Float32Array(n*3),oR=4.5,iR=1.8,pts=5;for(let i=0;i<n;i++){const sp=Math.floor(Math.random()*pts),oa=(sp/pts)*Math.PI*2-Math.PI/2,ia1=((sp-.5)/pts)*Math.PI*2-Math.PI/2,ia2=((sp+.5)/pts)*Math.PI*2-Math.PI/2;const tx=Math.cos(oa)*oR,ty=Math.sin(oa)*oR,i1x=Math.cos(ia1)*iR,i1y=Math.sin(ia1)*iR,i2x=Math.cos(ia2)*iR,i2y=Math.sin(ia2)*iR;let u=Math.random(),v=Math.random();if(u+v>1){u=1-u;v=1-v;}const w=1-u-v;p[i*3]=tx*w+i1x*u+i2x*v;p[i*3+1]=ty*w+i1y*u+i2y*v;p[i*3+2]=(Math.random()-.5)*.8;}return p;}
-function flower(n){const p=new Float32Array(n*3),sc=4;for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,ps=Math.abs(Math.cos(6*a*.5)),r=sc*(.15+.85*ps)*Math.sqrt(Math.random()),h=Math.sin(ps*Math.PI)*1.4*Math.random();p[i*3]=Math.cos(a)*r;p[i*3+1]=h;p[i*3+2]=Math.sin(a)*r;}return p;}
-function cloud(n){const p=new Float32Array(n*3);for(let i=0;i<n;i++){const t=Math.random()*Math.PI*2,ph=Math.acos(2*Math.random()-1),r=Math.cbrt(Math.random())*10;p[i*3]=r*Math.sin(ph)*Math.cos(t);p[i*3+1]=r*Math.sin(ph)*Math.sin(t);p[i*3+2]=r*Math.cos(ph);}return p;}
-function textPts(word,n){const cv=document.createElement('canvas'),cx=cv.getContext('2d',{willReadFrequently:true});cv.width=1024;cv.height=512;let fs=220;cx.font=`bold ${fs}px Inter,Arial,sans-serif`;while(cx.measureText(word.toUpperCase()).width>960&&fs>30){fs-=10;cx.font=`bold ${fs}px Inter,Arial,sans-serif`;}cx.fillStyle='#fff';cx.textAlign='center';cx.textBaseline='middle';cx.fillText(word.toUpperCase(),512,256);const d=cx.getImageData(0,0,1024,512).data,px=[];for(let y=0;y<512;y+=2)for(let x=0;x<1024;x+=2)if(d[(y*1024+x)*4+3]>120)px.push(x,y);if(px.length<10)return sphere(n);const p=new Float32Array(n*3);for(let i=0;i<n;i++){const pi=Math.floor(Math.random()*(px.length/2))*2;p[i*3]=((px[pi]/1024)-.5)*20;p[i*3+1]=-((px[pi+1]/512)-.5)*10;p[i*3+2]=(Math.random()-.5)*1.5;}return p;}
+    const frag = `
+varying vec3 vColor;varying float vAlpha;
+void main(){
+  vec2 uv=gl_PointCoord-.5;float d=length(uv);if(d>.5)discard;
+  float core=smoothstep(.5,0.,d);
+  float spec=exp(-d*15.)*.8;
+  float halo=exp(-d*4.)*.25;
+  float intensity=core*.4+spec+halo;
+  gl_FragColor=vec4(vColor*intensity,vAlpha*intensity);
+}`;
 
-const SYMS={love:heart,cube,star,circle:sphere,flower};
-function getTarget(w){const k=w.toLowerCase().trim();return SYMS[k]?SYMS[k](N):k.length?textPts(k,N):cloud(N);}
+    // ── GEOMETRY GENERATORS ──
+    function sphere(n, r = 4.2) { const p = new Float32Array(n * 3), ph = Math.PI * (3 - Math.sqrt(5)); for (let i = 0; i < n; i++) { const y = 1 - (i / (n - 1)) * 2, rr = Math.sqrt(1 - y * y), t = ph * i; p[i * 3] = Math.cos(t) * rr * r; p[i * 3 + 1] = y * r; p[i * 3 + 2] = Math.sin(t) * rr * r; } return p; }
+    function heart(n) { const p = new Float32Array(n * 3), s = .26; for (let i = 0; i < n; i++) { const t = Math.random() * Math.PI * 2, r = Math.random(); const x = 16 * Math.pow(Math.sin(t), 3), y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t); p[i * 3] = x * s * r; p[i * 3 + 1] = y * s * r + 1; p[i * 3 + 2] = (Math.random() - .5) * 3 * r; } return p; }
+    function cube(n) { const p = new Float32Array(n * 3), S = 1.75, ed = [[-1, -1, -1, 1, -1, -1], [-1, -1, -1, -1, 1, -1], [-1, -1, -1, -1, -1, 1], [1, 1, 1, -1, 1, 1], [1, 1, 1, 1, -1, 1], [1, 1, 1, 1, 1, -1], [-1, 1, -1, 1, 1, -1], [-1, 1, -1, -1, 1, 1], [1, -1, -1, 1, 1, -1], [1, -1, -1, 1, -1, 1], [-1, -1, 1, 1, -1, 1], [-1, -1, 1, -1, 1, 1]]; for (let i = 0; i < n; i++) { const e = ed[Math.floor(Math.random() * ed.length)], t = Math.random(); p[i * 3] = (e[0] + (e[3] - e[0]) * t) * S + (Math.random() - .5) * .04; p[i * 3 + 1] = (e[1] + (e[4] - e[1]) * t) * S + (Math.random() - .5) * .04; p[i * 3 + 2] = (e[2] + (e[5] - e[2]) * t) * S + (Math.random() - .5) * .04; } return p; }
+    function star(n) { const p = new Float32Array(n * 3), oR = 4.5, iR = 1.8, pts = 5; for (let i = 0; i < n; i++) { const sp = Math.floor(Math.random() * pts), oa = (sp / pts) * Math.PI * 2 - Math.PI / 2, ia1 = ((sp - .5) / pts) * Math.PI * 2 - Math.PI / 2, ia2 = ((sp + .5) / pts) * Math.PI * 2 - Math.PI / 2; const tx = Math.cos(oa) * oR, ty = Math.sin(oa) * oR, i1x = Math.cos(ia1) * iR, i1y = Math.sin(ia1) * iR, i2x = Math.cos(ia2) * iR, i2y = Math.sin(ia2) * iR; let u = Math.random(), v = Math.random(); if (u + v > 1) { u = 1 - u; v = 1 - v; } const w = 1 - u - v; p[i * 3] = tx * w + i1x * u + i2x * v; p[i * 3 + 1] = ty * w + i1y * u + i2y * v; p[i * 3 + 2] = (Math.random() - .5) * .8; } return p; }
+    function flower(n) { const p = new Float32Array(n * 3), sc = 4; for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, ps = Math.abs(Math.cos(6 * a * .5)), r = sc * (.15 + .85 * ps) * Math.sqrt(Math.random()), h = Math.sin(ps * Math.PI) * 1.4 * Math.random(); p[i * 3] = Math.cos(a) * r; p[i * 3 + 1] = h; p[i * 3 + 2] = Math.sin(a) * r; } return p; }
 
-// ── PARTICLE MESH ──────────────────────────────────
-const geo = new THREE.BufferGeometry();
-const sPos=cloud(N), ePos=sPos.slice();
-const delays=new Float32Array(N), seeds=new Float32Array(N);
-for(let i=0;i<N;i++){delays[i]=Math.random();seeds[i]=Math.random()*1000;}
-geo.setAttribute('aStart',new THREE.BufferAttribute(sPos,3));
-geo.setAttribute('aEnd',new THREE.BufferAttribute(ePos,3));
-geo.setAttribute('aDelay',new THREE.BufferAttribute(delays,1));
-geo.setAttribute('aSeed',new THREE.BufferAttribute(seeds,1));
-geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(N*3),3));
-
-const mat = new THREE.ShaderMaterial({
-  uniforms:{uTime:{value:0},uProgress:{value:1},uMouse3D:{value:new THREE.Vector3()},uInteraction:{value:0.5},uParticleSize:{value:2.2},uTargetColor:{value:new THREE.Color(0x00ccff)},uBurstStrength:{value:0}},
-  vertexShader:vert, fragmentShader:frag,
-  transparent:true, depthWrite:false, blending:THREE.AdditiveBlending
-});
-scene.add(new THREE.Points(geo,mat));
-
-// ── GUI CONTROL PANEL ──────────────────────────────
-const params = {
-  autoOptimize: true,
-  toggleFullscreen(){ document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen(); },
-  resetCamera(){ controls.reset(); controls.autoRotate=true; }
-};
-const gui = new GUI({title:'Controls'});
-gui.add(params,'toggleFullscreen').name('Toggle Fullscreen');
-const pf=gui.addFolder('Performance');
-pf.add(params,'autoOptimize').name('Auto-Optimize (LOD)');
-gui.add(mat.uniforms.uProgress,'value',0,1).name('Morph Progress').listen();
-const bf=gui.addFolder('Bloom');
-bf.add(bloom,'strength',0,2,.01);
-bf.add(bloom,'radius',0,1,.01);
-bf.add(bloom,'threshold',0,1,.01);
-const tf=gui.addFolder('Trails');
-tf.add(afterimg.uniforms.damp,'value',0.5,0.99,.001).name('Persistence');
-const phf=gui.addFolder('Physics');
-phf.add(mat.uniforms.uInteraction,'value',-2,2,.01).name('Interaction Strength');
-const vf=gui.addFolder('Visuals');
-vf.add(mat.uniforms.uParticleSize,'value',0.5,5,.1).name('Particle Size');
-vf.add(renderer,'toneMappingExposure',0,2,.01).name('Exposure');
-gui.add(params,'resetCamera').name('Reset Camera');
-
-// ── MORPH ENGINE ───────────────────────────────────
-const SHAPE_COLORS = {
-  love: 0xff3344,   // Beautiful Red
-  cube: 0x00ccff,   // Beautiful Water Blue
-  star: 0xffcc22,   // Beautiful Golden Yellow
-  circle: 0x00ccff, // Beautiful Water Blue
-  flower: 0xff66aa  // Beautiful Pink
-};
-
-let morphing=false,morphStart=0,morphLabel='';
-const statusEl=document.getElementById('status'), statusTextEl=document.getElementById('status-text');
-function spring(t){
-  const s = 1.70158 * 1.5;
-  const t1 = t - 1;
-  return t1 * t1 * ((s + 1) * t1 + s) + 1;
-}
-
-function morphTo(word){
-  const k = word.toLowerCase().trim();
-  const targetColor = SHAPE_COLORS[k] || 0xffffff; // Default to white for custom words
-  mat.uniforms.uTargetColor.value.set(targetColor);
-
-  const target=getTarget(word);
-  const sa=geo.attributes.aStart, ea=geo.attributes.aEnd;
-  const cp=mat.uniforms.uProgress.value;
-  for(let i=0;i<N;i++){
-    const ix=i*3;
-    const stg=delays[i]*.3, rp=Math.max(0,Math.min(1,(cp-stg)/(1-stg))), p=spring(rp);
-    sa.array[ix]  =sa.array[ix]  +(ea.array[ix]  -sa.array[ix]  )*p;
-    sa.array[ix+1]=sa.array[ix+1]+(ea.array[ix+1]-sa.array[ix+1])*p;
-    sa.array[ix+2]=sa.array[ix+2]+(ea.array[ix+2]-sa.array[ix+2])*p;
-    ea.array[ix]=target[ix]; ea.array[ix+1]=target[ix+1]; ea.array[ix+2]=target[ix+2];
-  }
-  sa.needsUpdate=true; ea.needsUpdate=true;
-  mat.uniforms.uProgress.value=0;
-  morphing=true; morphStart=performance.now()/1000; morphLabel=word.toUpperCase();
-  statusTextEl.textContent=`Morphing: "${morphLabel}" — 0%`;
-  statusEl.className='morphing';
-}
-
-// ── ANIMATION ──────────────────────────────────────
-const clock=new THREE.Clock();
-let lowFps=0,optimized=false;
-
-function tick(){
-  requestAnimationFrame(tick);
-  const el=clock.getElapsedTime(), dt=clock.getDelta();
-  mat.uniforms.uTime.value=el;
-  if(window._starMat) window._starMat.uniforms.uTime.value=el;
-
-  // Update interaction plane to face camera
-  const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion);
-  iPlane.setFromNormalAndCoplanarPoint(normal, new THREE.Vector3(0, 0, 0));
-
-  raycaster.setFromCamera(mouse2D,camera);
-  raycaster.ray.intersectPlane(iPlane,mouse3D);
-  
-  // Smooth mouse follow
-  mat.uniforms.uMouse3D.value.lerp(mouse3D, 0.1);
-
-  if(params.autoOptimize&&!optimized){
-    if(dt>.033){lowFps++;if(lowFps>60){renderer.setPixelRatio(1);afterimg.enabled=false;optimized=true;}}
-    else lowFps=0;
-  }
-
-  if(morphing){
-    const t=Math.min((performance.now()/1000-morphStart)/DURATION,1);
-    mat.uniforms.uProgress.value=t;
-    statusTextEl.textContent=`Morphing: "${morphLabel}" — ${Math.round(Math.min(spring(t), 1.0)*100)}%`;
-    if(t>=1){
-      morphing=false;
-      statusTextEl.textContent='Coherence Achieved ✓';
-      statusEl.className='';
-      setTimeout(()=>{
-        if(!morphing) statusTextEl.textContent='System Stable';
-      },2500);
+    // NEW SHAPES
+    function dna(n) {
+      const p = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) {
+        const t = Math.random() * Math.PI * 20 - Math.PI * 10;
+        const strand = Math.random() < 0.5 ? 0 : 1;
+        const offset = strand * Math.PI;
+        const backbone = (Math.random() < 0.7);
+        if (backbone) {
+          p[i * 3] = Math.cos(t + offset) * 2.2 + (Math.random() - .5) * .2;
+          p[i * 3 + 1] = t * .35 + (Math.random() - .5) * .1;
+          p[i * 3 + 2] = Math.sin(t + offset) * 2.2 + (Math.random() - .5) * .2;
+        } else {
+          // rungs
+          const rt = Math.round(Math.random() * 20) * Math.PI;
+          const frac = Math.random();
+          const ax = Math.cos(rt) * 2.2, az = Math.sin(rt) * 2.2;
+          const bx = Math.cos(rt + Math.PI) * 2.2, bz = Math.sin(rt + Math.PI) * 2.2;
+          p[i * 3] = ax + (bx - ax) * frac; p[i * 3 + 1] = rt * .35; p[i * 3 + 2] = az + (bz - az) * frac;
+        }
+      }
+      return p;
     }
-  }
 
-  controls.update();
-  composer.render();
-}
-tick();
-setTimeout(()=>morphTo('circle'),600);
+    function galaxy(n) {
+      const p = new Float32Array(n * 3);
+      const arms = 4;
+      for (let i = 0; i < n; i++) {
+        const arm = Math.floor(Math.random() * arms);
+        const r = Math.pow(Math.random(), 0.5) * 7;
+        const spin = r * 1.4;
+        const angle = (arm / arms) * Math.PI * 2 + spin;
+        const spread = 0.3 + r * .15;
+        p[i * 3] = Math.cos(angle) * r + (Math.random() - .5) * spread;
+        p[i * 3 + 1] = (Math.random() - .5) * (0.3 + r * .05);
+        p[i * 3 + 2] = Math.sin(angle) * r + (Math.random() - .5) * spread;
+      }
+      return p;
+    }
 
-// ── UI ─────────────────────────────────────────────
-window.handleSubmit=function(e){e.preventDefault();const v=document.getElementById('text-input').value.trim();if(v){morphTo(v);document.getElementById('text-input').value='';}return false;};
-window.morphWord=function(w){morphTo(w);document.getElementById('text-input').value='';};
-window.addEventListener('resize',()=>{const w=innerWidth,h=innerHeight;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h);composer.setSize(w,h);});
-</script>
+    function tornado(n) {
+      const p = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) {
+        const h = (Math.random() - .2) * 9;
+        const r = Math.max(0, 0.1 + (h + 1.8) * 0.55) * Math.pow(Math.random(), 0.4);
+        const angle = Math.random() * Math.PI * 2 + h * 1.5;
+        p[i * 3] = Math.cos(angle) * r;
+        p[i * 3 + 1] = h;
+        p[i * 3 + 2] = Math.sin(angle) * r;
+      }
+      return p;
+    }
+
+    function ring(n) {
+      const p = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const ringR = 4.2 + Math.random() * 1.4 - 0.7;
+        const tilt = (Math.random() - .5) * .5;
+        p[i * 3] = Math.cos(angle) * ringR;
+        p[i * 3 + 1] = Math.sin(angle) * ringR * tilt + (Math.random() - .5) * .3;
+        p[i * 3 + 2] = Math.sin(angle) * ringR;
+      }
+      return p;
+    }
+
+    function cloud(n) { const p = new Float32Array(n * 3); for (let i = 0; i < n; i++) { const t = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1), r = Math.cbrt(Math.random()) * 10; p[i * 3] = r * Math.sin(ph) * Math.cos(t); p[i * 3 + 1] = r * Math.sin(ph) * Math.sin(t); p[i * 3 + 2] = r * Math.cos(ph); } return p; }
+
+    function textPts(word, n) {
+      const cv = document.createElement('canvas'), cx = cv.getContext('2d', { willReadFrequently: true });
+      cv.width = 1024; cv.height = 512;
+      let fs = 220; cx.font = `bold ${fs}px "Space Grotesk",Arial,sans-serif`;
+      while (cx.measureText(word.toUpperCase()).width > 960 && fs > 30) { fs -= 10; cx.font = `bold ${fs}px "Space Grotesk",Arial,sans-serif`; }
+      cx.fillStyle = '#fff'; cx.textAlign = 'center'; cx.textBaseline = 'middle';
+      cx.fillText(word.toUpperCase(), 512, 256);
+      const d = cx.getImageData(0, 0, 1024, 512).data, px = [];
+      for (let y = 0; y < 512; y += 2)for (let x = 0; x < 1024; x += 2)if (d[(y * 1024 + x) * 4 + 3] > 120) px.push(x, y);
+      if (px.length < 10) return sphere(n);
+      const p = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) { const pi = Math.floor(Math.random() * (px.length / 2)) * 2; p[i * 3] = ((px[pi] / 1024) - .5) * 20; p[i * 3 + 1] = -((px[pi + 1] / 512) - .5) * 10; p[i * 3 + 2] = (Math.random() - .5) * 1.5; }
+      return p;
+    }
+
+    const SYMS = { love: heart, cube, star, circle: sphere, flower, galaxy, tornado, ring };
+    function getTarget(w) { const k = w.toLowerCase().trim(); return SYMS[k] ? SYMS[k](N) : k.length ? textPts(k, N) : cloud(N); }
+
+    // ── PARTICLE MESH ──
+    const geo = new THREE.BufferGeometry();
+    const sPos = cloud(N), ePos = sPos.slice();
+    const delays = new Float32Array(N), seeds = new Float32Array(N);
+    for (let i = 0; i < N; i++) { delays[i] = Math.random(); seeds[i] = Math.random() * 1000; }
+    geo.setAttribute('aStart', new THREE.BufferAttribute(sPos, 3));
+    geo.setAttribute('aEnd', new THREE.BufferAttribute(ePos, 3));
+    geo.setAttribute('aDelay', new THREE.BufferAttribute(delays, 1));
+    geo.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 1));
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N * 3), 3));
+
+    const mat = new THREE.ShaderMaterial({
+      uniforms: {
+        uTime: { value: 0 }, uProgress: { value: 1 },
+        uMouse3D: { value: new THREE.Vector3() }, uInteraction: { value: 0.5 },
+        uParticleSize: { value: 2.2 },
+        uTargetColor: { value: new THREE.Color(0x00d4ff) },
+        uBurstStrength: { value: 0 }
+      },
+      vertexShader: vert, fragmentShader: frag,
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+    });
+    scene.add(new THREE.Points(geo, mat));
+
+    // ── GUI CONTROL PANEL ──
+    const guiParams = {
+      autoOptimize: true,
+      toggleFullscreen() { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen(); },
+      resetCamera() { controls.reset(); controls.autoRotate = true; },
+      autoRotate: true,
+      rotateSpeed: 0.3
+    };
+    const gui = new GUI({ title: 'Controls' });
+    gui.add(guiParams, 'resetCamera').name('⟳ Reset Camera');
+    const pf = gui.addFolder('Performance');
+    pf.add(guiParams, 'autoOptimize').name('Auto-Optimize (LOD)');
+    const bf = gui.addFolder('Bloom');
+    bf.add(bloom, 'strength', 0, 2, .01).name('Strength');
+    bf.add(bloom, 'radius', 0, 1, .01).name('Radius');
+    bf.add(bloom, 'threshold', 0, 1, .01).name('Threshold');
+    const tf = gui.addFolder('Trails');
+    tf.add(afterimg.uniforms.damp, 'value', 0.5, 0.99, .001).name('Persistence');
+    const phf = gui.addFolder('Physics');
+    phf.add(mat.uniforms.uInteraction, 'value', -2, 2, .01).name('Interaction Strength');
+    const vf = gui.addFolder('Visuals');
+    vf.add(mat.uniforms.uParticleSize, 'value', 0.5, 5, .1).name('Particle Size');
+    vf.add(renderer, 'toneMappingExposure', 0, 2, .01).name('Exposure');
+    const cf = gui.addFolder('Camera');
+    cf.add(guiParams, 'autoRotate').name('Auto-Rotate').onChange(v => { controls.autoRotate = v; });
+    cf.add(guiParams, 'rotateSpeed', 0.1, 3, .05).name('Rotate Speed').onChange(v => { controls.autoRotateSpeed = v; });
+
+    // ── MORPH ENGINE ──
+    let morphing = false, morphStart = 0, morphLabel = '';
+    const statusEl = document.getElementById('status-bar');
+    const statusTextEl = document.getElementById('status-text');
+    const progressWrap = document.getElementById('progress-wrap');
+    const progressBar = document.getElementById('progress-bar');
+
+    function spring(t) { const s = 2.5553, t1 = t - 1; return t1 * t1 * ((s + 1) * t1 + s) + 1; }
+
+    function morphTo(word) {
+      const k = word.toLowerCase().trim();
+
+      // Update active button
+      document.querySelectorAll('.shape-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.shape === k);
+      });
+
+      // Color
+      const tc = SHAPE_COLORS[k] || 0xffffff;
+      mat.uniforms.uTargetColor.value.set(tc);
+
+      // Bloom color for shape
+      bloom.strength = 0.5;
+
+      const target = getTarget(word);
+      const sa = geo.attributes.aStart, ea = geo.attributes.aEnd;
+      const cp = mat.uniforms.uProgress.value;
+      for (let i = 0; i < N; i++) {
+        const ix = i * 3, stg = delays[i] * .3, rp = Math.max(0, Math.min(1, (cp - stg) / (1 - stg))), p = spring(rp);
+        sa.array[ix] = sa.array[ix] + (ea.array[ix] - sa.array[ix]) * p;
+        sa.array[ix + 1] = sa.array[ix + 1] + (ea.array[ix + 1] - sa.array[ix + 1]) * p;
+        sa.array[ix + 2] = sa.array[ix + 2] + (ea.array[ix + 2] - sa.array[ix + 2]) * p;
+        ea.array[ix] = target[ix]; ea.array[ix + 1] = target[ix + 1]; ea.array[ix + 2] = target[ix + 2];
+      }
+      sa.needsUpdate = true; ea.needsUpdate = true;
+      mat.uniforms.uProgress.value = 0;
+      morphing = true; morphStart = performance.now() / 1000; morphLabel = word.toUpperCase();
+      statusTextEl.textContent = `Morphing → ${morphLabel}`;
+      statusEl.className = 'morphing';
+      progressWrap.classList.add('active');
+    }
+
+    // ── ANIMATION ──
+    const clock = new THREE.Clock();
+    let lowFps = 0, optimized = false, frameCount = 0, lastFpsTime = 0;
+
+    function tick() {
+      requestAnimationFrame(tick);
+      const el = clock.getElapsedTime(), dt = clock.getDelta();
+      mat.uniforms.uTime.value = el;
+      if (window._starMat) window._starMat.uniforms.uTime.value = el;
+
+      // FPS counter
+      frameCount++;
+      if (el - lastFpsTime > 1) {
+        document.getElementById('ci-fps').textContent = frameCount;
+        frameCount = 0; lastFpsTime = el;
+      }
+
+      const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion);
+      iPlane.setFromNormalAndCoplanarPoint(normal, new THREE.Vector3());
+      raycaster.setFromCamera(mouse2D, camera);
+      raycaster.ray.intersectPlane(iPlane, mouse3D);
+      mat.uniforms.uMouse3D.value.lerp(mouse3D, 0.1);
+
+      if (!optimized) {
+        if (dt > .033) { lowFps++; if (lowFps > 60) { renderer.setPixelRatio(1); afterimg.enabled = false; optimized = true; } }
+        else lowFps = 0;
+      }
+
+      if (morphing) {
+        const t = Math.min((performance.now() / 1000 - morphStart) / DURATION, 1);
+        mat.uniforms.uProgress.value = t;
+        const pct = Math.round(Math.min(spring(t), 1) * 100);
+        progressBar.style.width = pct + '%';
+        statusTextEl.textContent = `Morphing → ${morphLabel} ${pct}%`;
+        if (t >= 1) {
+          morphing = false;
+          statusTextEl.textContent = 'Coherence Achieved ✓';
+          statusEl.className = '';
+          progressWrap.classList.remove('active');
+          progressBar.style.width = '0%';
+          setTimeout(() => { if (!morphing) statusTextEl.textContent = 'System Stable'; }, 2200);
+        }
+      }
+
+      controls.update();
+      composer.render();
+    }
+    tick();
+    setTimeout(() => morphTo('circle'), 600);
+
+    // ── UI HANDLERS ──
+    window.handleSubmit = function (e) {
+      e.preventDefault();
+      const v = document.getElementById('text-input').value.trim();
+      if (v) { morphTo(v); document.getElementById('text-input').value = ''; }
+      return false;
+    };
+    window.doMorph = function (w) { morphTo(w); document.getElementById('text-input').value = ''; };
+
+    window.addEventListener('resize', () => {
+      const w = innerWidth, h = innerHeight;
+      camera.aspect = w / h; camera.updateProjectionMatrix();
+      renderer.setSize(w, h); composer.setSize(w, h);
+    });
+  </script>
 </body>
+
 </html>
