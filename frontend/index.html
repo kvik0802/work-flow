@@ -279,6 +279,26 @@
       color: rgba(255, 255, 255, 0.4)
     }
 
+    .warning-note {
+      font-family: 'Space Mono', monospace;
+      font-size: 8px;
+      color: #ff4444;
+      background: rgba(255, 68, 68, 0.1);
+      border: 1px solid rgba(255, 68, 68, 0.2);
+      padding: 4px 8px;
+      border-radius: 4px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      animation: pulse-red 2s infinite;
+    }
+
+    @keyframes pulse-red {
+      0% { opacity: 0.6; }
+      50% { opacity: 1; }
+      100% { opacity: 0.6; }
+    }
+
     /* ── TOOLTIP ── */
     #tooltip {
       position: fixed;
@@ -355,6 +375,7 @@
 
   <!-- Corner info -->
   <div id="corner-info">
+    <div class="warning-note">⚠️ DON'T OPEN ON YOUR ANDROID USE PC</div>
     <span class="ci-label">Particles</span>
     <span class="ci-val" id="ci-particles">1,500,000</span>
     <span class="ci-label" style="margin-top:6px">FPS</span>
