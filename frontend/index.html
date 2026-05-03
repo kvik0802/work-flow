@@ -14,12 +14,18 @@
   #text-input::placeholder{color:rgba(255,255,255,0.25)}
   #morph-btn{background:linear-gradient(135deg,rgba(100,60,200,.7),rgba(180,50,140,.7));border:1px solid rgba(255,255,255,0.15);color:#fff;font-weight:600;font-size:13px;padding:7px 18px;border-radius:10px;cursor:pointer;letter-spacing:1px;text-transform:uppercase;transition:all .3s}
   #morph-btn:hover{filter:brightness(1.3);transform:scale(1.04)}
-  #status{font-size:12px;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,0.35)}
-  #status.morphing{color:rgba(160,100,255,.9)}
+  #status{font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,0.4);display:flex;align-items:center;gap:8px;transition:all 0.4s ease}
+  #status.morphing{color:rgba(180,120,255,1)}
+  .status-dot{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,0.4);box-shadow:0 0 10px rgba(255,255,255,0.2)}
+  #status.morphing .status-dot{background:rgba(180,120,255,1);box-shadow:0 0 12px rgba(180,120,255,0.6);animation:pulse 1.5s infinite ease-in-out}
+  @keyframes pulse{0%{transform:scale(1);opacity:1}50%{transform:scale(1.5);opacity:0.6}100%{transform:scale(1);opacity:1}}
+  .particle-count{font-weight:700;color:rgba(255,255,255,0.7);margin-left:4px}
   .hints{position:fixed;top:18px;left:50%;transform:translateX(-50%);z-index:10;display:flex;gap:7px;flex-wrap:wrap;justify-content:center}
-  .hint{background:rgba(255,255,255,0.05);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:5px 13px;font-size:11px;color:rgba(255,255,255,0.4);cursor:pointer;transition:all .3s;user-select:none}
-  .hint:hover{background:rgba(120,60,220,.25);border-color:rgba(140,80,255,.4);color:#fff}
-  .hint span{margin-right:3px}
+  .hint{background:rgba(255,255,255,0.05);backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,0.08);border-radius:20px;padding:5px 13px;font-size:11px;color:rgba(255,255,255,0.4);cursor:pointer;transition:all .4s cubic-bezier(0.175, 0.885, 0.32, 1.275);user-select:none;position:relative;overflow:hidden}
+  .hint:hover{background:rgba(140,80,255,0.2);border-color:rgba(160,100,255,0.5);color:#fff;transform:translateY(-2px);box-shadow:0 0 15px rgba(140,80,255,0.3), inset 0 0 10px rgba(140,80,255,0.2)}
+  .hint::after{content:'';position:absolute;top:50%;left:50%;width:120%;height:120%;background:radial-gradient(circle, rgba(255,255,255,0.2) 0%, transparent 70%);transform:translate(-50%,-50%) scale(0);transition:transform 0.5s ease-out;pointer-events:none}
+  .hint:active::after{transform:translate(-50%,-50%) scale(1);transition:0s}
+  .hint span{margin-right:3px;filter:drop-shadow(0 0 5px rgba(255,255,255,0.3))}
 </style>
 </head>
 <body>
@@ -36,7 +42,11 @@
     <input type="text" id="text-input" placeholder="Type any word… love, star, hello" autocomplete="off" spellcheck="false"/>
     <button type="submit" id="morph-btn">Morph</button>
   </form>
-  <div id="status">Status: Idle</div>
+  <div id="status">
+    <div class="status-dot"></div>
+    <span id="status-text">System Stable</span>
+    <span class="particle-count">150,000 Particles</span>
+  </div>
 </div>
 
 <script type="importmap">
@@ -113,10 +123,29 @@ composer.addPass(new OutputPass());
 const mouse2D = new THREE.Vector2();
 const mouse3D = new THREE.Vector3();
 const raycaster = new THREE.Raycaster();
-const iPlane = new THREE.Plane(new THREE.Vector3(0,0,1),0);
+const iPlane = new THREE.Plane(); // Will be updated to face camera
 window.addEventListener('mousemove',e=>{
   mouse2D.x=(e.clientX/innerWidth)*2-1;
   mouse2D.y=-(e.clientY/innerHeight)*2+1;
+});
+window.addEventListener('mousedown',()=>{
+  if(window._bursting) return;
+  window._bursting = true;
+  import('https://cdn.jsdelivr.net/npm/gsap@3.12.5/index.js').then(gsap => {
+    gsap.default.to(mat.uniforms.uBurstStrength, {
+      value: 1,
+      duration: 0.15,
+      ease: 'power2.out',
+      onComplete: () => {
+        gsap.default.to(mat.uniforms.uBurstStrength, {
+          value: 0,
+          duration: 0.8,
+          ease: 'power2.inOut',
+          onComplete: () => window._bursting = false
+        });
+      }
+    });
+  });
 });
 
 // ── SHADERS ────────────────────────────────────────
@@ -134,8 +163,13 @@ varying vec3 vColor;
 varying float vAlpha;
 varying float vDepth;
 uniform vec3 uTargetColor;
+uniform float uBurstStrength;
 
-float eio(float t){return t<.5?4.*t*t*t:1.-pow(-2.*t+2.,3.)*.5;}
+float spring(float t){
+  float s = 1.70158 * 1.5; // Increased overshoot
+  float t1 = t - 1.0;
+  return t1 * t1 * ((s + 1.0) * t1 + s) + 1.0;
+}
 
 // smooth noise helpers
 float h(float n){return fract(sin(n)*43758.5453);}
@@ -149,7 +183,7 @@ float sn(vec3 p){
 
 void main(){
   float stg=aDelay*.3;
-  float p=eio(clamp((uProgress-stg)/(1.-stg),0.,1.));
+  float p=spring(clamp((uProgress-stg)/(1.-stg),0.,1.));
   vec3 pos=mix(aStart,aEnd,p);
 
   // organic arc with noise turbulence
@@ -172,12 +206,15 @@ void main(){
   float driftY=cos(uTime*.05)*0.7+sin(uTime*.13)*0.5;
   pos.x+=driftX; pos.y+=driftY;
 
-  // mouse physics
-  vec3 toM=uMouse3D-pos;
-  float dist=length(toM);
-  if(dist>.01&&dist<6.){
-    float f=uInteraction*(1.-dist/6.);
-    pos+=normalize(toM)*f*.2;
+  // mouse physics (dynamic repulsion + burst)
+  vec3 toM = pos - uMouse3D;
+  float dist = length(toM);
+  float radius = 5.0;
+  if(dist < radius){
+    float force = pow(1.0 - dist/radius, 2.0);
+    // Combined interaction and burst
+    float totalForce = force * (uInteraction * 4.0 + uBurstStrength * 15.0);
+    pos += normalize(toM) * totalForce;
   }
 
   vec4 mv=modelViewMatrix*vec4(pos,1.);
@@ -199,9 +236,17 @@ void main(){
   float glossy = pow(coreFactor, 2.5) * 0.7;
   vColor = mix(shapeColor, vec3(1.0), glossy); 
   
-  // Subtle twinkle/hue variation to keep it organic
+  // Subtle twinkle/hue variation
   vColor += (sin(aSeed * 10.0 + uTime) * 0.05);
-  vColor *= 1.3; // Clean brightness
+  
+  // Mouse hover glow
+  float mDist = distance(pos, uMouse3D);
+  if(mDist < 3.0) {
+    float glow = pow(1.0 - mDist/3.0, 3.0);
+    vColor = mix(vColor, vec3(1.0, 0.4, 0.8), glow * 0.5); // Add a magenta tint near mouse
+  }
+  
+  vColor *= 1.3;
   
   vAlpha=smoothstep(60.,2.,-mv.z) * (0.6 + coreFactor * 0.4);
 }
@@ -249,7 +294,7 @@ geo.setAttribute('aSeed',new THREE.BufferAttribute(seeds,1));
 geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(N*3),3));
 
 const mat = new THREE.ShaderMaterial({
-  uniforms:{uTime:{value:0},uProgress:{value:1},uMouse3D:{value:new THREE.Vector3()},uInteraction:{value:-0.5},uParticleSize:{value:2.2},uTargetColor:{value:new THREE.Color(0x00ccff)}},
+  uniforms:{uTime:{value:0},uProgress:{value:1},uMouse3D:{value:new THREE.Vector3()},uInteraction:{value:0.5},uParticleSize:{value:2.2},uTargetColor:{value:new THREE.Color(0x00ccff)},uBurstStrength:{value:0}},
   vertexShader:vert, fragmentShader:frag,
   transparent:true, depthWrite:false, blending:THREE.AdditiveBlending
 });
@@ -289,8 +334,12 @@ const SHAPE_COLORS = {
 };
 
 let morphing=false,morphStart=0,morphLabel='';
-const statusEl=document.getElementById('status');
-function eio(t){return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;}
+const statusEl=document.getElementById('status'), statusTextEl=document.getElementById('status-text');
+function spring(t){
+  const s = 1.70158 * 1.5;
+  const t1 = t - 1;
+  return t1 * t1 * ((s + 1) * t1 + s) + 1;
+}
 
 function morphTo(word){
   const k = word.toLowerCase().trim();
@@ -302,7 +351,7 @@ function morphTo(word){
   const cp=mat.uniforms.uProgress.value;
   for(let i=0;i<N;i++){
     const ix=i*3;
-    const stg=delays[i]*.3, rp=Math.max(0,Math.min(1,(cp-stg)/(1-stg))), p=eio(rp);
+    const stg=delays[i]*.3, rp=Math.max(0,Math.min(1,(cp-stg)/(1-stg))), p=spring(rp);
     sa.array[ix]  =sa.array[ix]  +(ea.array[ix]  -sa.array[ix]  )*p;
     sa.array[ix+1]=sa.array[ix+1]+(ea.array[ix+1]-sa.array[ix+1])*p;
     sa.array[ix+2]=sa.array[ix+2]+(ea.array[ix+2]-sa.array[ix+2])*p;
@@ -311,7 +360,7 @@ function morphTo(word){
   sa.needsUpdate=true; ea.needsUpdate=true;
   mat.uniforms.uProgress.value=0;
   morphing=true; morphStart=performance.now()/1000; morphLabel=word.toUpperCase();
-  statusEl.textContent=`Morphing: "${morphLabel}" — 0%`;
+  statusTextEl.textContent=`Morphing: "${morphLabel}" — 0%`;
   statusEl.className='morphing';
 }
 
@@ -325,9 +374,15 @@ function tick(){
   mat.uniforms.uTime.value=el;
   if(window._starMat) window._starMat.uniforms.uTime.value=el;
 
+  // Update interaction plane to face camera
+  const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(camera.quaternion);
+  iPlane.setFromNormalAndCoplanarPoint(normal, new THREE.Vector3(0, 0, 0));
+
   raycaster.setFromCamera(mouse2D,camera);
   raycaster.ray.intersectPlane(iPlane,mouse3D);
-  mat.uniforms.uMouse3D.value.copy(mouse3D);
+  
+  // Smooth mouse follow
+  mat.uniforms.uMouse3D.value.lerp(mouse3D, 0.1);
 
   if(params.autoOptimize&&!optimized){
     if(dt>.033){lowFps++;if(lowFps>60){renderer.setPixelRatio(1);afterimg.enabled=false;optimized=true;}}
@@ -337,8 +392,15 @@ function tick(){
   if(morphing){
     const t=Math.min((performance.now()/1000-morphStart)/DURATION,1);
     mat.uniforms.uProgress.value=t;
-    statusEl.textContent=`Morphing: "${morphLabel}" — ${Math.round(eio(t)*100)}%`;
-    if(t>=1){morphing=false;statusEl.textContent='Status: Complete ✓';statusEl.className='';setTimeout(()=>{if(!morphing)statusEl.textContent='Status: Idle';},2000);}
+    statusTextEl.textContent=`Morphing: "${morphLabel}" — ${Math.round(Math.min(spring(t), 1.0)*100)}%`;
+    if(t>=1){
+      morphing=false;
+      statusTextEl.textContent='Coherence Achieved ✓';
+      statusEl.className='';
+      setTimeout(()=>{
+        if(!morphing) statusTextEl.textContent='System Stable';
+      },2500);
+    }
   }
 
   controls.update();
