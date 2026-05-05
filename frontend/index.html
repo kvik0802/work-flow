@@ -425,7 +425,9 @@
     import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
     import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
     import { AfterimagePass } from 'three/addons/postprocessing/AfterimagePass.js';
+    import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
     import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+    import { BokehPass } from 'three/addons/postprocessing/BokehPass.js';
 
     const N = 150000, DURATION = 3.2;
     const canvas = document.getElementById('scene');
@@ -436,31 +438,141 @@
     renderer.toneMappingExposure = 1.2;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x000005);
+    scene.background = new THREE.Color(0x000002);
 
-    // ── STARFIELD ──
+    // ── ENVIRONMENT: STARFIELD, NEBULA & DUST ──
     (() => {
-      const S = 8000, sp = new Float32Array(S * 3), ss = new Float32Array(S), sa = new Float32Array(S);
+      // 1. Enhanced Starfield
+      const S = 10000, sp = new Float32Array(S * 3), ss = new Float32Array(S), sa = new Float32Array(S), sc = new Float32Array(S * 3);
+      const starColors = [new THREE.Color(0xffffff), new THREE.Color(0xfff4e8), new THREE.Color(0xe8f4ff)];
       for (let i = 0; i < S; i++) {
-        const th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1), r = 80 + Math.random() * 400;
+        const th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1), r = 100 + Math.random() * 400;
         sp[i * 3] = r * Math.sin(ph) * Math.cos(th); sp[i * 3 + 1] = r * Math.sin(ph) * Math.sin(th); sp[i * 3 + 2] = r * Math.cos(ph);
-        ss[i] = Math.pow(Math.random(), 3) * 1.8 + 0.1; sa[i] = 0.3 + Math.random() * 0.7;
+        ss[i] = Math.pow(Math.random(), 3) * 1.5 + 0.2; sa[i] = 0.2 + Math.random() * 0.8;
+        const col = starColors[Math.floor(Math.random() * starColors.length)];
+        sc[i * 3] = col.r; sc[i * 3 + 1] = col.g; sc[i * 3 + 2] = col.b;
       }
       const sg = new THREE.BufferGeometry();
       sg.setAttribute('position', new THREE.BufferAttribute(sp, 3));
       sg.setAttribute('size', new THREE.BufferAttribute(ss, 1));
       sg.setAttribute('alpha', new THREE.BufferAttribute(sa, 1));
+      sg.setAttribute('color', new THREE.BufferAttribute(sc, 3));
       const sm = new THREE.ShaderMaterial({
         uniforms: { uTime: { value: 0 } },
-        vertexShader: `attribute float size;attribute float alpha;varying float vAlpha;void main(){vAlpha=alpha;vec4 mv=modelViewMatrix*vec4(position,1.);gl_Position=projectionMatrix*mv;gl_PointSize=size*(300./-mv.z);}`,
-        fragmentShader: `varying float vAlpha;void main(){vec2 uv=gl_PointCoord-.5;float d=length(uv);if(d>.5)discard;float b=smoothstep(.5,.0,d);gl_FragColor=vec4(1.,1.,1.,vAlpha*b);}`,
+        vertexShader: `
+          attribute float size; attribute float alpha; attribute vec3 color;
+          varying float vAlpha; varying vec3 vColor; uniform float uTime;
+          void main(){
+            vAlpha = alpha * (0.6 + 0.4 * sin(uTime * (1.0 + alpha) + position.x));
+            vColor = color;
+            vec4 mv = modelViewMatrix * vec4(position, 1.);
+            gl_Position = projectionMatrix * mv;
+            gl_PointSize = size * (300. / -mv.z);
+          }`,
+        fragmentShader: `
+          varying float vAlpha; varying vec3 vColor;
+          void main(){
+            vec2 uv = gl_PointCoord - .5; float d = length(uv);
+            if(d > .5) discard;
+            float b = smoothstep(.5, .0, d);
+            gl_FragColor = vec4(vColor, vAlpha * b);
+          }`,
         transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
       });
       scene.add(new THREE.Points(sg, sm));
       window._starMat = sm;
+
+      // 2. Deep Space Nebula
+      const ng = new THREE.SphereGeometry(480, 32, 32);
+      const nm = new THREE.ShaderMaterial({
+        side: THREE.BackSide,
+        uniforms: {
+          uTime: { value: 0 },
+          uColorA: { value: new THREE.Color(0x020005) },
+          uColorB: { value: new THREE.Color(0x080c18) }
+        },
+        vertexShader: `
+          varying vec3 vPos;
+          void main() {
+            vPos = position;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform float uTime;
+          uniform vec3 uColorA;
+          uniform vec3 uColorB;
+          varying vec3 vPos;
+          float hash(vec3 p) {
+            p = fract(p * 0.3183099 + .1);
+            p *= 17.0;
+            return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+          }
+          float noise(vec3 x) {
+            vec3 i = floor(x); vec3 f = fract(x);
+            f = f * f * (3.0 - 2.0 * f);
+            return mix(mix(mix(hash(i), hash(i + vec3(1, 0, 0)), f.x),
+                       mix(hash(i + vec3(0, 1, 0)), hash(i + vec3(1, 1, 0)), f.x), f.y),
+                       mix(mix(hash(i + vec3(0, 0, 1)), hash(i + vec3(1, 0, 1)), f.x),
+                       mix(hash(i + vec3(0, 1, 1)), hash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+          }
+          void main() {
+            vec3 p = vPos * 0.005 + uTime * 0.015;
+            float n = noise(p) * 0.5 + noise(p * 2.0) * 0.25 + noise(p * 4.0) * 0.125;
+            float n2 = noise(p * 1.5 - uTime * 0.02);
+            vec3 finalCol = mix(uColorA, uColorB, n);
+            finalCol = mix(finalCol, vec3(0.05, 0.02, 0.1), n2 * 0.3);
+            gl_FragColor = vec4(finalCol, 1.0);
+          }
+        `,
+        transparent: true
+      });
+      scene.add(new THREE.Mesh(ng, nm));
+      window._nebulaMat = nm;
+
+      // 3. Cosmic Dust (Foreground Parallax)
+      const D = 400, dp = new Float32Array(D * 3), ds = new Float32Array(D), da = new Float32Array(D);
+      for (let i = 0; i < D; i++) {
+        dp[i * 3] = (Math.random() - 0.5) * 120;
+        dp[i * 3 + 1] = (Math.random() - 0.5) * 120;
+        dp[i * 3 + 2] = (Math.random() - 0.5) * 120;
+        ds[i] = 10 + Math.random() * 30;
+        da[i] = 0.02 + Math.random() * 0.08;
+      }
+      const dg = new THREE.BufferGeometry();
+      dg.setAttribute('position', new THREE.BufferAttribute(dp, 3));
+      dg.setAttribute('size', new THREE.BufferAttribute(ds, 1));
+      dg.setAttribute('alpha', new THREE.BufferAttribute(da, 1));
+      const dm = new THREE.ShaderMaterial({
+        uniforms: { uTime: { value: 0 } },
+        vertexShader: `
+          attribute float size; attribute float alpha;
+          varying float vAlpha; uniform float uTime;
+          void main(){
+            vec3 p = position;
+            p.y += sin(uTime * 0.05 + position.x) * 3.0;
+            p.z += cos(uTime * 0.08 + position.y) * 3.0;
+            vAlpha = alpha;
+            vec4 mv = modelViewMatrix * vec4(p, 1.);
+            gl_Position = projectionMatrix * mv;
+            gl_PointSize = size * (300. / -mv.z);
+          }`,
+        fragmentShader: `
+          varying float vAlpha;
+          void main(){
+            vec2 uv = gl_PointCoord - .5;
+            if(length(uv) > .5) discard;
+            float b = exp(-length(uv) * 6.0);
+            gl_FragColor = vec4(0.7, 0.8, 1.0, vAlpha * b);
+          }`,
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+      });
+      scene.add(new THREE.Points(dg, dm));
+      window._dustMat = dm;
     })();
 
     const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 1000);
+    window.camera = camera;
     camera.position.set(0, 0, 11);
 
     const controls = new OrbitControls(camera, canvas);
@@ -470,14 +582,164 @@
     controls.addEventListener('end', () => { window._art = setTimeout(() => controls.autoRotate = true, 4000) });
 
     // ── POST PROCESSING ──
+    const CinematicShader = {
+      uniforms: {
+        'tDiffuse': { value: null },
+        'uOffset': { value: 1.1 },
+        'uDarkness': { value: 1.2 },
+        'uChroma': { value: 0.004 },
+        'uContrast': { value: 1.05 },
+        'uSaturation': { value: 1.1 },
+        'uTint': { value: new THREE.Color(0xffffff) }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float uOffset;
+        uniform float uDarkness;
+        uniform float uChroma;
+        uniform float uContrast;
+        uniform float uSaturation;
+        uniform vec3 uTint;
+        varying vec2 vUv;
+
+        vec3 contrast(vec3 color, float value) {
+          return (color - 0.5) * value + 0.5;
+        }
+
+        vec3 saturation(vec3 color, float value) {
+          float luminance = dot(color, vec3(0.2126, 0.7152, 0.0722));
+          return mix(vec3(luminance), color, value);
+        }
+
+        void main() {
+          vec2 dist = vUv - 0.5;
+          float d = length(dist);
+
+          float r = texture2D(tDiffuse, vUv - dist * uChroma * d).r;
+          float g = texture2D(tDiffuse, vUv).g;
+          float b = texture2D(tDiffuse, vUv + dist * uChroma * d).b;
+
+          vec3 color = vec3(r, g, b);
+          color = contrast(color, uContrast);
+          color = saturation(color, uSaturation);
+          color *= uTint;
+
+          float vignette = smoothstep(uOffset, uOffset - uDarkness, d);
+          gl_FragColor = vec4(color * vignette, 1.0);
+        }
+      `
+    };
+
+    const AnamorphicShader = {
+      uniforms: {
+        'tDiffuse': { value: null },
+        'uScale': { value: 1.0 },
+        'uIntensity': { value: 0.5 },
+        'uColor': { value: new THREE.Color(0x3366ff) }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float uScale;
+        uniform float uIntensity;
+        uniform vec3 uColor;
+        varying vec2 vUv;
+        void main() {
+          vec4 sum = vec4(0.0);
+          for (float i = -10.0; i <= 10.0; i++) {
+            float weight = exp(-0.05 * i * i);
+            sum += texture2D(tDiffuse, vUv + vec2(i * 0.005 * uScale, 0.0)) * weight;
+          }
+          vec4 original = texture2D(tDiffuse, vUv);
+          vec3 streak = sum.rgb * uIntensity * uColor;
+          gl_FragColor = vec4(original.rgb + streak, original.a);
+        }
+      `
+    };
+
+    const FilmGrainShader = {
+      uniforms: {
+        'tDiffuse': { value: null },
+        'uTime': { value: 0 },
+        'uAmount': { value: 0.04 }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float uTime;
+        uniform float uAmount;
+        varying vec2 vUv;
+        float rand(vec2 co) {
+          return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
+        }
+        void main() {
+          vec4 color = texture2D(tDiffuse, vUv);
+          float noise = (rand(vUv + uTime) - 0.5) * uAmount;
+          gl_FragColor = vec4(color.rgb + noise, color.a);
+        }
+      `
+    };
+
     const composer = new EffectComposer(renderer);
+    window.composer = composer;
     composer.addPass(new RenderPass(scene, camera));
-    const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.5, 0.9, 0.35);
+
+    const bokehPass = new BokehPass(scene, camera, {
+      focus: 11.0,
+      aperture: 0.012,
+      maxblur: 0.015,
+      width: innerWidth,
+      height: innerHeight
+    });
+    composer.addPass(bokehPass);
+
+    const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.8, 0.4, 0.85);
     composer.addPass(bloom);
+
+    const cinematicPass = new ShaderPass(CinematicShader);
+    composer.addPass(cinematicPass);
+
+    const anamorphicPass = new ShaderPass(AnamorphicShader);
+    composer.addPass(anamorphicPass);
+
+    const filmGrainPass = new ShaderPass(FilmGrainShader);
+    composer.addPass(filmGrainPass);
+
     const afterimg = new AfterimagePass();
     afterimg.uniforms.damp.value = 0.92;
     composer.addPass(afterimg);
+
     composer.addPass(new OutputPass());
+
+    // ── CAMERA DYNAMICS ──
+    const camState = {
+      shake: 0,
+      focus: 11.0,
+      targetFocus: 11.0,
+      aperture: 0.012,
+      targetAperture: 0.012,
+      fovBase: 60,
+      fovTarget: 60
+    };
 
     // ── MOUSE ──
     const mouse2D = new THREE.Vector2(), mouse3D = new THREE.Vector3();
@@ -490,6 +752,7 @@
       if (window._bursting || document.activeElement === document.getElementById('text-input')) return;
       window._bursting = true;
       mat.uniforms.uBurstStrength.value = 1;
+      camState.shake = 1.5; // Kickback
       const fade = () => {
         mat.uniforms.uBurstStrength.value *= 0.88;
         if (mat.uniforms.uBurstStrength.value > 0.01) requestAnimationFrame(fade);
@@ -515,6 +778,7 @@ uniform float uProgress;
 uniform vec3 uMouse3D;
 uniform float uInteraction;
 uniform float uParticleSize;
+uniform float uPulse;
 attribute vec3 aStart;
 attribute vec3 aEnd;
 attribute float aDelay;
@@ -534,15 +798,24 @@ float sn(vec3 p){
   return mix(mix(mix(h3(i),h3(i+vec3(1,0,0)),u.x),mix(h3(i+vec3(0,1,0)),h3(i+vec3(1,1,0)),u.x),u.y),
              mix(mix(h3(i+vec3(0,0,1)),h3(i+vec3(1,0,1)),u.x),mix(h3(i+vec3(0,1,1)),h3(i+vec3(1,1,1)),u.x),u.y),u.z);
 }
+float fBm(vec3 p){
+  float v=0.,a=.5;
+  for(int i=0;i<3;i++){ v+=a*sn(p);p*=2.1;a*=.5; }
+  return v;
+}
 
 void main(){
   float stg=aDelay*.3;
   float p=spring(clamp((uProgress-stg)/(1.-stg),0.,1.));
   vec3 pos=mix(aStart,aEnd,p);
 
+  float pulse=1.+uPulse*0.05*sin(uTime*1.5+aSeed);
+  pos*=pulse;
+
   float arc=sin(p*3.14159);
   vec3 np=pos*.4+vec3(uTime*.12);
-  pos+=vec3((sn(np)-.5)*2.,(sn(np+vec3(5.2,1.3,2.8))-.5)*2.,(sn(np+vec3(9.7,3.1,6.4))-.5)*2.)*arc*0.9;
+  float n=fBm(np);
+  pos+=vec3((n-.5)*2.,(fBm(np+vec3(5.2))-.5)*2.,(fBm(np+vec3(9.7))-.5)*2.)*arc*1.2;
 
   float idle=1.-smoothstep(0.,.3,uProgress)+smoothstep(.8,1.,uProgress);
   float t1=uTime*.55,t2=uTime*.31,t3=uTime*.19;
@@ -562,13 +835,17 @@ void main(){
 
   vec4 mv=modelViewMatrix*vec4(pos,1.);
   gl_Position=projectionMatrix*mv;
+
+  float glint = pow(max(0.0, sin(uTime * (2.0 + aSeed) + aSeed * 100.0)), 20.0) * 2.0;
   float twinkle=sin(uTime*(1.5+aSeed*2.)+aSeed*10.)*.3+.7;
-  gl_PointSize=clamp(uParticleSize*(380./-mv.z),.6,8.)*twinkle;
+  gl_PointSize=clamp((uParticleSize + glint) *(380./-mv.z),.6,12.)*twinkle;
 
   float distC=length(aEnd)/6.,core=1.-clamp(distC,0.,1.);
   float glossy=pow(core,2.5)*.2;
   vColor=mix(uTargetColor,vec3(1.),glossy);
-  vColor+=(sin(aSeed*10.+uTime)*.05);
+  vColor.r+=sin(uTime+pos.x*0.2)*0.04;
+  vColor.b+=cos(uTime+pos.y*0.2)*0.04;
+  vColor+=(sin(aSeed*10.+uTime)*.05) + glint * 0.5;
   vColor*=1.3;
   vAlpha=smoothstep(60.,2.,-mv.z)*(.6+core*.4);
 }`;
@@ -577,11 +854,18 @@ void main(){
 varying vec3 vColor;varying float vAlpha;
 void main(){
   vec2 uv=gl_PointCoord-.5;float d=length(uv);if(d>.5)discard;
-  float core=smoothstep(.5,0.,d);
+  float r=smoothstep(.5,0.,d*1.02);
+  float g=smoothstep(.5,0.,d);
+  float b=smoothstep(.5,0.,d*0.98);
   float spec=exp(-d*15.)*.8;
   float halo=exp(-d*4.)*.25;
-  float intensity=core*.4+spec+halo;
-  gl_FragColor=vec4(vColor*intensity,vAlpha*intensity);
+
+  // Star cross glint in fragment
+  float crossGlint = smoothstep(0.01, 0.0, abs(uv.x) * abs(uv.y) * 100.0) * smoothstep(0.5, 0.0, d);
+
+  float intensity=g*.4+spec+halo + crossGlint * 0.3;
+  vec3 col=vColor*vec3(r,g,b)*intensity;
+  gl_FragColor=vec4(col,vAlpha*intensity);
 }`;
 
     // ── GEOMETRY GENERATORS ──
@@ -693,6 +977,7 @@ void main(){
         uTime: { value: 0 }, uProgress: { value: 1 },
         uMouse3D: { value: new THREE.Vector3() }, uInteraction: { value: 0.5 },
         uParticleSize: { value: 2.2 },
+        uPulse: { value: 1.0 },
         uTargetColor: { value: new THREE.Color(0x00d4ff) },
         uBurstStrength: { value: 0 }
       },
@@ -717,6 +1002,21 @@ void main(){
     const cfm = gui.addFolder('Colors');
     orbCtrl = cfm.addColor(guiParams, 'orbColor').name('Orb Core').onChange(v => mat.uniforms.uTargetColor.value.set(v));
 
+    const cdf = gui.addFolder('Cinematic Lens');
+    cdf.add(bokehPass.uniforms.focus, 'value', 0, 100, 0.1).name('Focal Distance');
+    cdf.add(bokehPass.uniforms.aperture, 'value', 0, 0.1, 0.001).name('Aperture');
+    cdf.add(bokehPass.uniforms.maxblur, 'value', 0, 0.05, 0.001).name('Max Blur');
+
+    const cgf = gui.addFolder('Color Grading');
+    cgf.add(cinematicPass.uniforms.uContrast, 'value', 0.5, 2.0, 0.01).name('Contrast');
+    cgf.add(cinematicPass.uniforms.uSaturation, 'value', 0.0, 2.0, 0.01).name('Saturation');
+    cgf.addColor(cinematicPass.uniforms.uTint, 'value').name('Tint');
+
+    const asf = gui.addFolder('Anamorphic Flare');
+    asf.add(anamorphicPass.uniforms.uIntensity, 'value', 0, 2.0, 0.01).name('Intensity');
+    asf.add(anamorphicPass.uniforms.uScale, 'value', 0.1, 5.0, 0.1).name('Scale');
+    asf.addColor(anamorphicPass.uniforms.uColor, 'value').name('Flare Color');
+
     const pf = gui.addFolder('Performance');
     pf.add(guiParams, 'autoOptimize').name('Auto-Optimize (LOD)');
     const bf = gui.addFolder('Bloom');
@@ -730,6 +1030,7 @@ void main(){
     const vf = gui.addFolder('Visuals');
     vf.add(mat.uniforms.uParticleSize, 'value', 0.5, 5, .1).name('Particle Size');
     vf.add(renderer, 'toneMappingExposure', 0, 2, .01).name('Exposure');
+    vf.add(filmGrainPass.uniforms.uAmount, 'value', 0, 0.2, 0.001).name('Grain Amount');
     const cf = gui.addFolder('Camera');
     cf.add(guiParams, 'autoRotate').name('Auto-Rotate').onChange(v => { controls.autoRotate = v; });
     cf.add(guiParams, 'rotateSpeed', 0.1, 3, .05).name('Rotate Speed').onChange(v => { controls.autoRotateSpeed = v; });
@@ -790,6 +1091,9 @@ void main(){
       const dt = clock.getDelta(), el = clock.getElapsedTime();
       mat.uniforms.uTime.value = el;
       if (window._starMat) window._starMat.uniforms.uTime.value = el;
+      if (window._nebulaMat) window._nebulaMat.uniforms.uTime.value = el;
+      if (window._dustMat) window._dustMat.uniforms.uTime.value = el;
+      if (filmGrainPass) filmGrainPass.uniforms.uTime.value = el;
 
       // FPS counter
       frameCount++;
@@ -815,8 +1119,15 @@ void main(){
         const pct = Math.round(Math.min(spring(t), 1) * 100);
         progressBar.style.width = pct + '%';
         statusTextEl.textContent = `Morphing → ${morphLabel} ${pct}%`;
+
+        // Dynamic FOV/Focus during morph
+        camState.fovTarget = 60 + Math.sin(t * Math.PI) * 15;
+        bokehPass.uniforms.focus.value = 11.0 + Math.sin(t * Math.PI) * 10.0;
+
         if (t >= 1) {
           morphing = false;
+          camState.fovTarget = 60;
+          bokehPass.uniforms.focus.value = 11.0;
           statusTextEl.textContent = 'Coherence Achieved ✓';
           statusEl.classList.remove('morphing');
           progressWrap.classList.remove('active');
@@ -826,6 +1137,23 @@ void main(){
       }
 
       controls.update();
+
+      // Handheld Camera Movement
+      const noise = (t, f) => Math.sin(t * f) + Math.sin(t * f * 1.5) * 0.5;
+      const driftX = noise(el, 0.4) * 0.03 + noise(el, 1.8) * 0.005;
+      const driftY = noise(el, 0.5) * 0.03 + noise(el, 1.4) * 0.005;
+      const shakeAmt = camState.shake;
+      camera.position.x += (driftX + (Math.random() - 0.5) * shakeAmt) * 5;
+      camera.position.y += (driftY + (Math.random() - 0.5) * shakeAmt) * 5;
+      camera.rotation.z += (noise(el, 0.2) * 0.005 + (Math.random() - 0.5) * shakeAmt * 0.01);
+      camState.shake *= 0.9;
+
+      // FOV Lerp
+      if (Math.abs(camera.fov - camState.fovTarget) > 0.1) {
+        camera.fov += (camState.fovTarget - camera.fov) * 0.05;
+        camera.updateProjectionMatrix();
+      }
+
       composer.render();
     }
     tick();
